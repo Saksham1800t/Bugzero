@@ -1,0 +1,81 @@
+<svg viewBox="0 0 700 520" xmlns="http://www.w3.org/2000/svg" font-family="SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace">
+  <title>bugzero rescue demo</title>
+  <desc>Illustrative animation of "bugzero rescue" fixing a small TypeScript error. Log lines are the tool's real output format; the example error is a stand-in, not a captured recording.</desc>
+
+  <style>
+    text { font-size: 13px; }
+    .prompt { fill: #58a6ff; }
+    .out { fill: #c9d1d9; }
+    .ok { fill: #3fb950; }
+    .dim { fill: #8b949e; }
+    .dot { }
+    .titlebar-label { fill: #8b949e; font-size: 12px; }
+
+    @keyframes gA { 0% { opacity: 0; } 2% { opacity: 1; } 90% { opacity: 1; } 97% { opacity: 0; } 100% { opacity: 0; } }
+    @keyframes gB { 0%, 6% { opacity: 0; } 9% { opacity: 1; } 90% { opacity: 1; } 97% { opacity: 0; } 100% { opacity: 0; } }
+    @keyframes gC { 0%, 16% { opacity: 0; } 19% { opacity: 1; } 90% { opacity: 1; } 97% { opacity: 0; } 100% { opacity: 0; } }
+    @keyframes gD { 0%, 26% { opacity: 0; } 29% { opacity: 1; } 90% { opacity: 1; } 97% { opacity: 0; } 100% { opacity: 0; } }
+    @keyframes gE { 0%, 38% { opacity: 0; } 41% { opacity: 1; } 90% { opacity: 1; } 97% { opacity: 0; } 100% { opacity: 0; } }
+    @keyframes gF { 0%, 48% { opacity: 0; } 50% { opacity: 1; } 90% { opacity: 1; } 97% { opacity: 0; } 100% { opacity: 0; } }
+    @keyframes gG { 0%, 56% { opacity: 0; } 59% { opacity: 1; } 90% { opacity: 1; } 97% { opacity: 0; } 100% { opacity: 0; } }
+
+    .groupA { animation: gA 14s ease-in-out infinite; }
+    .groupB { animation: gB 14s ease-in-out infinite; }
+    .groupC { animation: gC 14s ease-in-out infinite; }
+    .groupD { animation: gD 14s ease-in-out infinite; }
+    .groupE { animation: gE 14s ease-in-out infinite; }
+    .groupF { animation: gF 14s ease-in-out infinite; }
+    .groupG { animation: gG 14s ease-in-out infinite; }
+  </style>
+
+  <rect x="0" y="0" width="700" height="520" rx="10" fill="#0d1117" />
+  <rect x="0" y="0" width="700" height="34" rx="10" fill="#161b22" />
+  <rect x="0" y="24" width="700" height="10" fill="#161b22" />
+
+  <circle class="dot" cx="20" cy="17" r="6" fill="#ff5f56" />
+  <circle class="dot" cx="40" cy="17" r="6" fill="#ffbd2e" />
+  <circle class="dot" cx="60" cy="17" r="6" fill="#27c93f" />
+  <text class="titlebar-label" x="350" y="21" text-anchor="middle">bugzero rescue</text>
+
+  <g class="groupA">
+    <text class="prompt" x="18" y="54">$ bugzero rescue --path ./demo-project</text>
+  </g>
+
+  <g class="groupB">
+    <text class="out" x="18" y="83">🤖 BugZero Fix</text>
+    <text class="out" x="18" y="102">   Path:        ./demo-project</text>
+    <text class="out" x="18" y="121">   Framework:   typescript</text>
+    <text class="out" x="18" y="140">   Max attempts: 3</text>
+  </g>
+
+  <g class="groupC">
+    <text class="out" x="18" y="169">[BugZero] Running validation pipeline in: ./demo-project</text>
+    <text class="out" x="18" y="188">[BugZero] Running build...</text>
+    <text class="out" x="18" y="207">[BugZero] Detected 1 error(s) (type: typescript)</text>
+  </g>
+
+  <g class="groupD">
+    <text class="out" x="18" y="236">[BugZero] Attempt 1/3 — asking AI…</text>
+  </g>
+
+  <g class="groupE">
+    <text class="out" x="18" y="265">[BugZero] Patching 1 file: src/sum.ts</text>
+    <text class="out" x="18" y="284">[BugZero] Reason:   Fixed subtraction typo in the sum() function</text>
+    <text class="out" x="18" y="303">[BugZero] Backup saved to: src/sum.ts.opspilot.bak</text>
+    <text class="out" x="18" y="322">[BugZero] Re-running validation pipeline to verify fix…</text>
+  </g>
+
+  <g class="groupF">
+    <text class="ok" x="18" y="351">[BugZero] ✅ Validation succeeded!</text>
+  </g>
+
+  <g class="groupG">
+    <text class="dim" x="18" y="380">──────────────────────────────────────────────</text>
+    <text class="ok" x="18" y="399">✅ Build fixed after 1 attempt(s)!</text>
+    <text class="out" x="18" y="418">   Model:  deepseek/deepseek-chat</text>
+    <text class="out" x="18" y="437">   Tokens: Prompt: 812 | Completion: 96 | Total: 908</text>
+    <text class="out" x="18" y="456">   File:   src/sum.ts</text>
+    <text class="out" x="18" y="475">   Reason: Fixed subtraction typo in the sum() function</text>
+    <text class="out" x="18" y="494">   Root cause: sum() used the - operator instead of +</text>
+  </g>
+</svg>

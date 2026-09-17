@@ -13,11 +13,15 @@
 
 **BugZero** is an autonomous, AI-powered CLI that detects and repairs build, lint, and test failures — locally or as a GitHub Action that opens the fix as a pull request.
 
+<img src="https://raw.githubusercontent.com/Saksham1800t/Bugzero/main/apps/bugzero/demo.svg" alt="Animated terminal demo of bugzero rescue detecting and fixing a TypeScript build error" width="700" />
+
+<sub>Illustrative animation of a <code>bugzero rescue</code> run using the tool's real log output format.</sub>
+
 </div>
 
 ---
 
-## ⚡ Quick Start
+## Quick Start
 
 ```bash
 npm install -g bugzero
@@ -33,11 +37,11 @@ That's it — BugZero runs your build, diagnoses the failure, generates a patch,
 
 Modern applications fail at build and deployment time for reasons that are repetitive, predictable, and ultimately fixable by a knowledgeable agent. BugZero bridges the gap between raw compiler output and working code — automatically.
 
-- 🔁 **No more debugging the same TypeScript error twice.** The agent reads the error, finds the file, generates the fix, and verifies it.
-- 🛡️ **Safe by design.** Every modified file gets a `.opspilot.bak` backup, and a multi-file fix is applied and rolled back as one atomic unit.
-- 🎯 **Forgiving, not brittle.** If the AI's suggested patch doesn't match the file byte-for-byte, BugZero falls back to whitespace-normalized and similarity-scored matching before giving up.
-- 🧠 **Model agnostic.** DeepSeek, Claude, Gemini, GPT-4o, Llama, or any model on OpenRouter.
-- 🤖 **CI-native.** Run it as a GitHub Action instead of a local CLI, and let it open the fix as a PR.
+- **No more debugging the same TypeScript error twice.** The agent reads the error, finds the file, generates the fix, and verifies it.
+- **Safe by design.** Every modified file gets a `.opspilot.bak` backup, and a multi-file fix is applied and rolled back as one atomic unit.
+- **Forgiving, not brittle.** If the AI's suggested patch doesn't match the file byte-for-byte, BugZero falls back to whitespace-normalized and similarity-scored matching before giving up.
+- **Model agnostic.** DeepSeek, Claude, Gemini, GPT-4o, Llama, or any model on OpenRouter.
+- **CI-native.** Run it as a GitHub Action instead of a local CLI, and let it open the fix as a PR.
 
 ---
 
@@ -84,7 +88,7 @@ bugzero rescue
 
 ---
 
-## ✨ Key Features
+## Key Features
 
 | Feature | Description |
 |---|---|
@@ -102,7 +106,7 @@ bugzero rescue
 
 ---
 
-## 🤖 GitHub Action Mode
+## GitHub Action Mode
 
 Instead of running BugZero on your machine, run it in CI: when a check fails, it opens a pull request with the fix instead of patching your local checkout.
 
@@ -260,7 +264,7 @@ BugZero provides clear, actionable output for common failure modes:
 ---
 
 <details>
-<summary><strong>🛠️ Development Setup</strong> (contributing to BugZero itself)</summary>
+<summary><strong>Development Setup</strong> (contributing to BugZero itself)</summary>
 
 Clone the repository and install dependencies. This project uses a pnpm monorepo managed by Turborepo, with a Vitest test suite and GitHub Actions CI.
 
