@@ -194,20 +194,26 @@ ${compilerLogs}
 Your task:
 1. Root Cause: Identify the root cause of the build failure.
 2. Codebase Context: Read the provided file contents and directory listings under "📁 Codebase Context" to locate the correct files, imports, and file paths. Do not guess filenames or contents that are not in the context.
-3. Patch: Provide the minimal, precise fix.
+3. Patch: Provide the minimal, precise fix. If the fix genuinely requires changes in more than one file (for example, a renamed export and every place that imports it), include one patch entry per file — all patches in your response are applied together, atomically.
 
 Reply with ONLY a valid JSON object in this exact shape — no markdown fences, no extra text:
 {
   "rootCause": "One-sentence explanation of the error",
-  "filePath": "relative/path/from/project/root/to/file.ts",
-  "search": "exact code that currently exists in the file and must be replaced",
-  "replace": "the corrected code that replaces the search string",
-  "explanation": "short explanation of what you changed and why"
+  "explanation": "short explanation of what you changed and why",
+  "patches": [
+    {
+      "filePath": "relative/path/from/project/root/to/file.ts",
+      "search": "exact code that currently exists in the file and must be replaced",
+      "replace": "the corrected code that replaces the search string"
+    }
+  ]
 }
 
 Critical rules:
-- "filePath" must be a relative path from the project root (no leading /).
-- "search" must be an EXACT character-for-character substring of the current file content.
-- "replace" must be syntactically valid code.
+- "patches" must contain at least one entry. Only include more than one when the fix truly requires editing multiple files — most fixes need just one.
+- Each "filePath" must be a relative path from the project root (no leading /).
+- Each "search" must be an EXACT character-for-character substring of that file's current content.
+- Each "replace" must be syntactically valid code.
+- If two patches target the same file, list them in the order they should be applied, and make sure each "search" reflects the file's content *after* the previous patch in this list has been applied to it.
 - Do NOT add backticks, markdown, or any text outside the JSON object.`;
 }

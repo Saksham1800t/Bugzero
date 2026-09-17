@@ -18,15 +18,21 @@ export interface AIAnalysis {
   recommendation: string;
 }
 
-/** Structured fix suggestion returned by the AI */
-export interface AIFixSuggestion {
-  rootCause: string;
+/** A single search-and-replace edit within an AI fix suggestion */
+export interface AIPatch {
   /** Relative path from project root to the file that needs changing */
   filePath: string;
-  /** Exact code snippet to search for (must match file content exactly) */
+  /** Code snippet to search for (matched exactly, then via fuzzy fallback) */
   search: string;
   /** Replacement code that fixes the issue */
   replace: string;
+}
+
+/** Structured fix suggestion returned by the AI */
+export interface AIFixSuggestion {
+  rootCause: string;
+  /** One or more file edits that together resolve the failure, applied atomically */
+  patches: AIPatch[];
   /** Human-readable explanation of the change */
   explanation: string;
 }

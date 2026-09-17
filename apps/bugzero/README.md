@@ -75,6 +75,7 @@ bugzero rescue
 | Framework detection | Automatically identifies your project's tooling setup |
 | Safe file patching | Every modified file receives a `.opspilot.bak` backup |
 | Fuzzy patch matching | Falls back from exact match to whitespace-normalized and similarity-scored matching when the AI's snippet doesn't match the file verbatim |
+| Multi-file patches | A single fix attempt can edit several files at once, applied atomically — if any file's patch fails, every file touched in that attempt is rolled back |
 | Error type parsing | Parses TypeScript, ESLint, and Jest error formats |
 | Dry-run mode | Analyze and report without writing any files |
 | Local model config | Save preferred model to `.bugzerorc` per project |

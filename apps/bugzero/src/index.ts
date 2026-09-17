@@ -75,7 +75,8 @@ program
           console.log(`   Tokens: Prompt: ${result.promptTokens} | Completion: ${result.completionTokens} | Total: ${result.promptTokens + result.completionTokens}`);
         }
         if (result.appliedFix) {
-          console.log(`   File:   ${result.appliedFix.filePath}`);
+          const files = result.appliedFix.patches.map((p) => p.filePath).join(", ");
+          console.log(`   File${result.appliedFix.patches.length === 1 ? "" : "s"}:   ${files}`);
           console.log(`   Reason: ${result.appliedFix.explanation}`);
           console.log(`   Root cause: ${result.appliedFix.rootCause}`);
         }

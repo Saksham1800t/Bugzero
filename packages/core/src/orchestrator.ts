@@ -119,6 +119,24 @@ export async function orchestrateAndFix(
   return result;
 }
 
+function formatPatchesForPrompt(appliedFix: { patches: { filePath: string; search: string; replace: string }[] }): string {
+  return appliedFix.patches
+    .map(
+      (p, i) =>
+        `File ${i + 1}: ${p.filePath}\n- Search code:\n${p.search}\n- Replace code:\n${p.replace}`
+    )
+    .join("\n\n");
+}
+
+function formatPatchesMarkdown(appliedFix: { patches: { filePath: string; search: string; replace: string }[] }): string {
+  return appliedFix.patches
+    .map(
+      (p) =>
+        `**File:** \`${p.filePath}\`\n\n**Search (Before):**\n\`\`\`typescript\n${p.search}\n\`\`\`\n\n**Replace (After):**\n\`\`\`typescript\n${p.replace}\n\`\`\``
+    )
+    .join("\n\n---\n\n");
+}
+
 async function writeReport(
   cwd: string,
   type: "hunt" | "rescue",
@@ -207,14 +225,12 @@ ${logs}
     
     if (success && appliedFix) {
       console.log("[BugZero] Calling AI to write solution summary report...");
-      const prompt = `You are an expert software engineer assistant. An automated AI agent successfully resolved a build/lint/test failure in a project located at "${cwd}" after ${attempts} attempts by applying a patch to "${appliedFix.filePath}".
+      const patchedFiles = appliedFix.patches.map((p: { filePath: string }) => p.filePath).join(", ");
+      const prompt = `You are an expert software engineer assistant. An automated AI agent successfully resolved a build/lint/test failure in a project located at "${cwd}" after ${attempts} attempts by applying a patch to: ${patchedFiles}.
 Here is the patch details:
 - Root Cause: ${appliedFix.rootCause}
 - Explanation: ${appliedFix.explanation}
-- Search code:
-${appliedFix.search}
-- Replace code:
-${appliedFix.replace}
+${formatPatchesForPrompt(appliedFix)}
 
 Please generate a professional, beautifully formatted Markdown report summarizing:
 1. **Repair Summary:** Celebrate the success and explain the fix.
@@ -241,20 +257,12 @@ Generate the Markdown report directly. Do not wrap it in markdown block fences (
 - **Token Usage:** ${promptTokens !== undefined && completionTokens !== undefined ? `Prompt: **${promptTokens}** | Completion: **${completionTokens}** | Total: **${promptTokens + completionTokens}**` : "*N/A*"}
 
 ## 🛠️ Applied Solution
-- **Target File:** \`${appliedFix.filePath}\`
+- **Target File(s):** ${appliedFix.patches.map((p: { filePath: string }) => `\`${p.filePath}\``).join(", ")}
 - **Root Cause:** ${appliedFix.rootCause}
 - **Explanation:** ${appliedFix.explanation}
 
 ### 📝 Code Changes
-**Search (Before):**
-\`\`\`typescript
-${appliedFix.search}
-\`\`\`
-
-**Replace (After):**
-\`\`\`typescript
-${appliedFix.replace}
-\`\`\`
+${formatPatchesMarkdown(appliedFix)}
 `;
       }
     } else {

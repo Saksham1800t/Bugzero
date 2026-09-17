@@ -1,9 +1,8 @@
 import { StateGraph, START, END } from "@langchain/langgraph";
-import path from "path";
 import { GraphState } from "./state";
 import { OpenRouterProvider } from "@opspilot/ai-provider";
 import { buildAnalysisPrompt } from "@opspilot/prompts";
-import { applyPatch } from "@opspilot/patcher";
+import { applyPatches } from "@opspilot/patcher";
 import { runValidationPipeline } from "@opspilot/analyzers";
 import type { AIFixSuggestion } from "@opspilot/shared";
 
@@ -27,7 +26,12 @@ async function analyzeNode(state: typeof GraphState.State) {
       .trim();
     const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
-      fixSuggestion = JSON.parse(jsonMatch[0]) as AIFixSuggestion;
+      const parsed = JSON.parse(jsonMatch[0]) as AIFixSuggestion;
+      if (Array.isArray(parsed.patches) && parsed.patches.length > 0) {
+        fixSuggestion = parsed;
+      } else {
+        console.warn("[BugZero] AI response JSON did not contain a non-empty \"patches\" array.");
+      }
     } else {
       console.warn("[BugZero] AI response did not contain a valid JSON object.");
     }
@@ -52,23 +56,25 @@ async function applyFixNode(state: typeof GraphState.State) {
     return {};
   }
 
-  const { filePath, search, replace, explanation } = state.fixSuggestion;
-  const absolutePath = path.resolve(state.cwd, filePath);
+  const { patches, explanation } = state.fixSuggestion;
+  const fileList = patches.map((p) => p.filePath).join(", ");
 
-  console.log(`[BugZero] Patching: ${filePath}`);
+  console.log(`[BugZero] Patching ${patches.length} file${patches.length === 1 ? "" : "s"}: ${fileList}`);
   console.log(`[BugZero] Reason:   ${explanation}`);
 
-  const result = applyPatch(absolutePath, search, replace);
+  const result = applyPatches(state.cwd, patches);
   if (!result.success) {
     console.error(`[BugZero] Patch failed: ${result.error}`);
-    const updatedLogs = `${state.logs}\n\n⚠️ [BugZero System Warning] Your previous patch suggestion for "${filePath}" failed with the following error:\n- ${result.error}\n\nPlease check if the file path is correct relative to the project root and make sure you target the correct file that contains the build error.`;
+    const updatedLogs = `${state.logs}\n\n⚠️ [BugZero System Warning] Your previous patch suggestion failed with the following error:\n- ${result.error}\n\nAny other files from that same suggestion were rolled back to keep the change atomic. Please check if the file path(s) are correct relative to the project root and make sure you target the correct file(s) that contain the build error.`;
     return {
       logs: updatedLogs,
     };
-  } else {
-    console.log(`[BugZero] Backup saved to: ${result.backupPath}`);
-    if (result.matchStrategy && result.matchStrategy !== "exact") {
-      console.log(`[BugZero] Note: exact match failed — patch applied via ${result.matchStrategy} matching.`);
+  }
+
+  for (const applied of result.applied) {
+    console.log(`[BugZero] Backup saved to: ${applied.backupPath}`);
+    if (applied.matchStrategy !== "exact") {
+      console.log(`[BugZero] Note: exact match failed for ${applied.filePath} — patch applied via ${applied.matchStrategy} matching.`);
     }
   }
 
