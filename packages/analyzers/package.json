@@ -1,0 +1,13 @@
+{
+  "name": "@opspilot/analyzers",
+  "version": "0.0.1",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup src/index.ts --dts"
+  },
+  "dependencies": {
+    "execa": "^7.2.0",
+    "@opspilot/shared": "workspace:*"
+  }
+}

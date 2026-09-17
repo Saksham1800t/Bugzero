@@ -1,0 +1,16 @@
+{
+  "name": "@opspilot/core",
+  "version": "0.0.1",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup src/index.ts --dts"
+  },
+  "dependencies": {
+    "@opspilot/agents": "workspace:*",
+    "@opspilot/ai-provider": "workspace:*",
+    "@opspilot/analyzers": "workspace:*",
+    "@opspilot/shared": "workspace:*",
+    "execa": "^7.2.0"
+  }
+}

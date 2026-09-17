@@ -1,0 +1,28 @@
+{
+  "name": "opspilot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "turbo run build",
+    "hunt": "tsx packages/cli/src/index.ts hunt",
+    "rescue": "tsx packages/cli/src/index.ts rescue",
+    "vibe": "tsx packages/cli/src/index.ts vibe"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "packageManager": "pnpm@10.33.0",
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "eslint": "^10.4.1",
+    "prettier": "^3.8.3",
+    "tsup": "^8.5.1",
+    "turbo": "^2.9.16",
+    "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "commander": "^15.0.0"
+  }
+}

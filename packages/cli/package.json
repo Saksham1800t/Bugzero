@@ -1,0 +1,26 @@
+{
+  "name": "bugzero",
+  "version": "0.0.29",
+  "description": "An autonomous, AI-powered CLI tool for automatic build error detection and repair.",
+  "license": "MIT",
+  "bin": {
+    "bugzero": "dist/index.js"
+  },
+  "dependencies": {
+    "@langchain/core": "^1.1.48",
+    "@langchain/langgraph": "^1.3.2",
+    "axios": "^1.16.1",
+    "commander": "^15.0.0",
+    "execa": "^7.2.0"
+  },
+  "devDependencies": {
+    "@opspilot/agents": "workspace:*",
+    "@opspilot/config": "workspace:*",
+    "@opspilot/core": "workspace:*"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs --dts"
+  }
+}
