@@ -1,0 +1,33 @@
+name: "BugZero AI Build Fixer"
+description: "Runs BugZero's AI-powered repair loop against your project and opens a pull request with the fix when your build, lint, or tests are failing."
+author: "Saksham Agarwal"
+branding:
+  icon: "tool"
+  color: "purple"
+
+inputs:
+  path:
+    description: "Path to the project to analyze and fix, relative to the workflow's working directory."
+    required: false
+    default: "."
+  max-attempts:
+    description: "Maximum AI fix attempts before giving up."
+    required: false
+    default: "3"
+  base-branch:
+    description: "Branch to open the fix pull request against. Defaults to the branch the workflow is running on."
+    required: false
+  github-token:
+    description: "Token used to create the fix branch and open the pull request. Needs `contents: write` and `pull-requests: write`."
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  fixed:
+    description: "\"true\" if BugZero successfully fixed the build, \"false\" otherwise."
+  pull-request-url:
+    description: "URL of the pull request BugZero opened, if any."
+
+runs:
+  using: "node20"
+  main: "dist/index.js"

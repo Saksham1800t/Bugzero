@@ -1,0 +1,17 @@
+{
+  "name": "@opspilot/github-action",
+  "version": "0.0.1",
+  "private": true,
+  "description": "GitHub Action wrapper that runs BugZero's repair loop and opens a pull request with the fix.",
+  "scripts": {
+    "build": "tsup"
+  },
+  "dependencies": {
+    "@actions/core": "^1.11.1",
+    "@actions/github": "^6.0.1",
+    "@opspilot/core": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.1"
+  }
+}

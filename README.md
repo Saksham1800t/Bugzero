@@ -80,6 +80,7 @@ bugzero rescue
 | Dry-run mode | Analyze and report without writing any files |
 | Local model config | Save preferred model to `.bugzerorc` per project |
 | Markdown Reports | Automatically generates a detailed `bugzero-report.md` listing error logs, model name, token usage, and search/replace code diffs |
+| GitHub Action mode | Run the repair loop in CI and open a pull request with the fix, instead of patching a local checkout — see [`apps/github-action`](apps/github-action/README.md) |
 
 ---
 
@@ -220,6 +221,7 @@ pnpm vibe
 | `packages/prompts` | LLM prompt templates |
 | `packages/config` | Env loading and local `.bugzerorc` config store |
 | `packages/shared` | Shared TypeScript types |
+| `apps/github-action` | GitHub Action wrapper — runs the repair loop in CI and opens a fix PR |
 
 ---
 

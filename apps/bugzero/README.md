@@ -80,6 +80,7 @@ bugzero rescue
 | Dry-run mode | Analyze and report without writing any files |
 | Local model config | Save preferred model to `.bugzerorc` per project |
 | Markdown Reports | Automatically generates a detailed Markdown report at `bugzero-report.md` in the target project path and outputs clickable file URLs in the terminal to open them instantly. |
+| GitHub Action mode | Run the repair loop in CI and open a pull request with the fix — see the [BugZero AI Build Fixer Action](https://github.com/Saksham1800t/Bugzero/tree/main/apps/github-action) |
 
 ---
 

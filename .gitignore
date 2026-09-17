@@ -5,6 +5,11 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# GitHub Actions load action.yml + dist/index.js directly from the repo at a
+# tag — there's no install/build step — so this one app's bundle must be committed.
+!apps/github-action/dist/
+!apps/github-action/dist/**
+
 # Turborepo
 .turbo/
 
