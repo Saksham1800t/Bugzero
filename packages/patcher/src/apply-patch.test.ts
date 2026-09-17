@@ -22,11 +22,41 @@ describe("applyPatch", () => {
     const result = applyPatch(filePath, "const x: number = 'oops';", "const x: number = 1;");
 
     expect(result.success).toBe(true);
+    expect(result.matchStrategy).toBe("exact");
     expect(fs.readFileSync(filePath, "utf-8")).toBe("const x: number = 1;");
 
     const backupPath = filePath + ".opspilot.bak";
     expect(result.backupPath).toBe(backupPath);
     expect(fs.readFileSync(backupPath, "utf-8")).toBe("const x: number = 'oops';");
+  });
+
+  it("falls back to whitespace-normalized matching when only indentation/spacing differs", () => {
+    const filePath = path.join(tmpDir, "file.ts");
+    fs.writeFileSync(filePath, ["function add(a, b) {", "    return   a + b;", "}"].join("\n"), "utf-8");
+
+    const result = applyPatch(
+      filePath,
+      ["function add(a, b) {", "return a + b;", "}"].join("\n"),
+      ["function add(a, b) {", "    return a - b;", "}"].join("\n")
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.matchStrategy).toBe("whitespace");
+    expect(fs.readFileSync(filePath, "utf-8")).toBe(
+      ["function add(a, b) {", "    return a - b;", "}"].join("\n")
+    );
+  });
+
+  it("falls back to similarity matching when the AI's snippet is a near-miss", () => {
+    const filePath = path.join(tmpDir, "file.ts");
+    fs.writeFileSync(filePath, `const message = "Hello, world!";`, "utf-8");
+
+    // Missing the comma — not a whitespace-only difference.
+    const result = applyPatch(filePath, `const message = "Hello world!";`, `const message = "Goodbye!";`);
+
+    expect(result.success).toBe(true);
+    expect(result.matchStrategy).toBe("similarity");
+    expect(fs.readFileSync(filePath, "utf-8")).toBe(`const message = "Goodbye!";`);
   });
 
   it("only replaces the first occurrence of the search string", () => {
@@ -57,6 +87,7 @@ describe("applyPatch", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("Search string not found");
+    expect(result.error).toContain("fuzzy matching");
     expect(fs.readFileSync(filePath, "utf-8")).toBe("const x = 1;");
     expect(fs.existsSync(filePath + ".opspilot.bak")).toBe(false);
   });

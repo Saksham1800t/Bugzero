@@ -67,6 +67,9 @@ async function applyFixNode(state: typeof GraphState.State) {
     };
   } else {
     console.log(`[BugZero] Backup saved to: ${result.backupPath}`);
+    if (result.matchStrategy && result.matchStrategy !== "exact") {
+      console.log(`[BugZero] Note: exact match failed — patch applied via ${result.matchStrategy} matching.`);
+    }
   }
 
   return {};

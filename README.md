@@ -74,6 +74,7 @@ bugzero rescue
 | Multi-model support | DeepSeek, Claude, GPT-4o, Gemini, Llama via OpenRouter |
 | Framework detection | Automatically identifies your project's tooling setup |
 | Safe file patching | Every modified file receives a `.opspilot.bak` backup |
+| Fuzzy patch matching | Falls back from exact match to whitespace-normalized and similarity-scored matching when the AI's snippet doesn't match the file verbatim |
 | Error type parsing | Parses TypeScript, ESLint, and Jest error formats |
 | Dry-run mode | Analyze and report without writing any files |
 | Local model config | Save preferred model to `.bugzerorc` per project |
