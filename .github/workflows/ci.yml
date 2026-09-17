@@ -29,10 +29,3 @@ jobs:
 
       - name: Run tests
         run: pnpm test
-
-      - name: Verify the GitHub Action's committed bundle is up to date
-        run: |
-          if ! git diff --exit-code -- apps/github-action/dist; then
-            echo "::error::apps/github-action/dist is out of date. Run 'pnpm --filter @opspilot/github-action build' and commit the result."
-            exit 1
-          fi

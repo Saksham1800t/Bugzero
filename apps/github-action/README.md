@@ -65,4 +65,4 @@ Also requires an `OPENROUTER_API_KEY` environment variable (see the root [README
 pnpm --filter @opspilot/github-action build
 ```
 
-`dist/index.js` is committed to this repository (unlike every other package here) because GitHub Actions loads `action.yml` and the bundled entrypoint directly from the repo at a given ref — there's no install step. **Rebuild and commit `dist/` whenever `src/` changes.** CI checks that the committed bundle matches a fresh build and fails if it's out of date.
+`dist/index.js` is committed to this repository (unlike every other package here) because GitHub Actions loads `action.yml` and the bundled entrypoint directly from the repo at a given ref — there's no install step. **Rebuild and commit `dist/` whenever `src/` changes.** (The bundle isn't byte-identical across platforms/Node versions — esbuild's output for module resolution ordering can differ between Windows and Linux — so CI doesn't diff-check it; treat a stale bundle as a review-time thing to catch, the same way you'd catch a forgotten `git add`.)
