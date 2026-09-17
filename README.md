@@ -209,7 +209,7 @@ pnpm vibe
 
 | Package | Role |
 |---|---|
-| `packages/cli` | CLI entrypoint (Commander) |
+| `apps/bugzero` | CLI entrypoint (Commander) — the package published to npm |
 | `packages/core` | Orchestrates build and fix flow |
 | `packages/agents` | LangGraph state machine (analyze, patch, verify) |
 | `packages/ai-provider` | OpenRouter HTTP client |

@@ -1,13 +1,13 @@
 name: Publish to npm
 
-# Only the `bugzero` CLI package (packages/cli) is published to npm.
-# This runs whenever packages/cli/package.json changes on main, and only
+# Only the `bugzero` CLI package (apps/bugzero) is published to npm.
+# This runs whenever apps/bugzero/package.json changes on main, and only
 # actually publishes if the version field was bumped.
 on:
   push:
     branches: [main]
     paths:
-      - "packages/cli/package.json"
+      - "apps/bugzero/package.json"
   workflow_dispatch: {}
 
 jobs:
@@ -37,7 +37,7 @@ jobs:
       - name: Check whether the version actually changed
         id: version
         run: |
-          LOCAL_VERSION=$(node -p "require('./packages/cli/package.json').version")
+          LOCAL_VERSION=$(node -p "require('./apps/bugzero/package.json').version")
           PUBLISHED_VERSION=$(npm view bugzero version 2>/dev/null || echo "0.0.0")
           echo "local=$LOCAL_VERSION" >> "$GITHUB_OUTPUT"
           if [ "$LOCAL_VERSION" != "$PUBLISHED_VERSION" ]; then
@@ -48,7 +48,7 @@ jobs:
 
       - name: Publish bugzero to npm
         if: steps.version.outputs.changed == 'true'
-        working-directory: packages/cli
+        working-directory: apps/bugzero
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

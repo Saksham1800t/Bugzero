@@ -6,9 +6,9 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "turbo run build",
-    "hunt": "tsx packages/cli/src/index.ts hunt",
-    "rescue": "tsx packages/cli/src/index.ts rescue",
-    "vibe": "tsx packages/cli/src/index.ts vibe"
+    "hunt": "tsx apps/bugzero/src/index.ts hunt",
+    "rescue": "tsx apps/bugzero/src/index.ts rescue",
+    "vibe": "tsx apps/bugzero/src/index.ts vibe"
   },
   "keywords": [],
   "author": "",
