@@ -1,6 +1,6 @@
 {
   "name": "bugzero",
-  "version": "0.0.30",
+  "version": "0.0.31",
   "description": "An autonomous, AI-powered CLI tool for automatic build error detection and repair.",
   "license": "MIT",
   "bin": {
