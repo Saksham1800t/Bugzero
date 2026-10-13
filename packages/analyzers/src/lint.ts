@@ -1,4 +1,5 @@
+import { detectPackageManager, getRunScriptCommand } from "./package-manager";
 import { runCommand } from "./run-command";
 
 export const runLint = (cwd?: string) =>
-  runCommand("npm run lint", cwd);
+  runCommand(getRunScriptCommand(detectPackageManager(cwd), "lint"), cwd);

@@ -26138,6 +26138,8 @@ var require_dist = __commonJS({
     var __toCommonJS2 = (mod) => __copyProps2(__defProp2({}, "__esModule", { value: true }), mod);
     var index_exports = {};
     __export2(index_exports, {
+      detectPackageManager: () => detectPackageManager2,
+      getRunScriptCommand: () => getRunScriptCommand,
       parseErrors: () => parseErrors,
       runBuild: () => runBuild,
       runCommand: () => runCommand,
@@ -26146,6 +26148,39 @@ var require_dist = __commonJS({
       runValidationPipeline: () => runValidationPipeline
     });
     module2.exports = __toCommonJS2(index_exports);
+    var import_fs2 = __toESM2(require("fs"));
+    var import_path2 = __toESM2(require("path"));
+    var VALID_MANAGERS = ["npm", "pnpm", "yarn", "bun"];
+    var LOCKFILE_MANAGERS = [
+      { file: "pnpm-workspace.yaml", manager: "pnpm" },
+      { file: "pnpm-lock.yaml", manager: "pnpm" },
+      { file: "yarn.lock", manager: "yarn" },
+      { file: "bun.lockb", manager: "bun" },
+      { file: "bun.lock", manager: "bun" },
+      { file: "package-lock.json", manager: "npm" }
+    ];
+    function detectPackageManager2(cwd = process.cwd()) {
+      try {
+        const pkgPath = import_path2.default.join(cwd, "package.json");
+        if (import_fs2.default.existsSync(pkgPath)) {
+          const pkg = JSON.parse(import_fs2.default.readFileSync(pkgPath, "utf-8"));
+          if (typeof pkg.packageManager === "string") {
+            const name = pkg.packageManager.split("@")[0].trim();
+            if (VALID_MANAGERS.includes(name)) {
+              return name;
+            }
+          }
+        }
+      } catch {
+      }
+      for (const { file, manager } of LOCKFILE_MANAGERS) {
+        if (import_fs2.default.existsSync(import_path2.default.join(cwd, file))) return manager;
+      }
+      return "npm";
+    }
+    function getRunScriptCommand(manager, script) {
+      return `${manager} run ${script}`;
+    }
     async function runCommand(command, cwd) {
       const { execa: execa2 } = await Promise.resolve().then(() => (init_execa(), execa_exports));
       try {
@@ -26169,9 +26204,9 @@ var require_dist = __commonJS({
         };
       }
     }
-    var runBuild = (cwd) => runCommand("npm run build", cwd);
-    var runLint = (cwd) => runCommand("npm run lint", cwd);
-    var runTests = (cwd) => runCommand("npm run test", cwd);
+    var runBuild = (cwd) => runCommand(getRunScriptCommand(detectPackageManager2(cwd), "build"), cwd);
+    var runLint = (cwd) => runCommand(getRunScriptCommand(detectPackageManager2(cwd), "lint"), cwd);
+    var runTests = (cwd) => runCommand(getRunScriptCommand(detectPackageManager2(cwd), "test"), cwd);
     var TS_ERROR_RE = /^(.+)\((\d+),(\d+)\):\s+error\s+TS\d+:\s+(.+)$/gm;
     var ESLINT_ERROR_RE = /^\s+(\d+):(\d+)\s+error\s+(.+)$/gm;
     var JEST_FAIL_RE = /● (.+)/g;
@@ -26221,15 +26256,15 @@ var require_dist = __commonJS({
       }
       return errors;
     }
-    var import_fs2 = __toESM2(require("fs"));
-    var import_path2 = __toESM2(require("path"));
+    var import_fs22 = __toESM2(require("fs"));
+    var import_path22 = __toESM2(require("path"));
     async function runValidationPipeline(cwd) {
       const targetCwd = cwd ?? process.cwd();
       let scripts = [];
       try {
-        const pkgPath = import_path2.default.resolve(targetCwd, "package.json");
-        if (import_fs2.default.existsSync(pkgPath)) {
-          const pkg = JSON.parse(import_fs2.default.readFileSync(pkgPath, "utf-8"));
+        const pkgPath = import_path22.default.resolve(targetCwd, "package.json");
+        if (import_fs22.default.existsSync(pkgPath)) {
+          const pkg = JSON.parse(import_fs22.default.readFileSync(pkgPath, "utf-8"));
           scripts = Object.keys(pkg.scripts || {});
         }
       } catch {
@@ -111132,6 +111167,7 @@ var require_dist12 = __commonJS({
     var index_exports = {};
     __export2(index_exports, {
       detectFramework: () => detectFramework,
+      detectPackageManager: () => import_analyzers2.detectPackageManager,
       orchestrate: () => orchestrate,
       orchestrateAndFix: () => orchestrateAndFix2
     });
@@ -111464,6 +111500,7 @@ ${rawOutput}
         console.log("\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500");
       }
     }
+    var import_analyzers2 = require_dist();
   }
 });
 

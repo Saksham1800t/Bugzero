@@ -3,7 +3,7 @@
 import "@opspilot/config"; // loads .env before anything else
 import { Command } from "commander";
 import path from "path";
-import { orchestrate, orchestrateAndFix, detectFramework } from "@opspilot/core";
+import { orchestrate, orchestrateAndFix, detectFramework, detectPackageManager } from "@opspilot/core";
 
 
 const program = new Command();
@@ -22,10 +22,12 @@ program
     try {
       const cwd = path.resolve(opts.path);
       const framework = detectFramework(cwd);
+      const packageManager = detectPackageManager(cwd);
 
       console.log(`\n🔍 BugZero — Analyzing project`);
       console.log(`   Path:      ${cwd}`);
-      console.log(`   Framework: ${framework}\n`);
+      console.log(`   Framework: ${framework}`);
+      console.log(`   Package manager: ${packageManager}\n`);
 
       const { build, lint, test } = await orchestrate({ cwd });
 
@@ -57,10 +59,12 @@ program
       const maxAttempts = parseInt(opts.maxAttempts, 10);
       const dryRun: boolean = opts.dryRun;
       const framework = detectFramework(cwd);
+      const packageManager = detectPackageManager(cwd);
 
       console.log(`\n🤖 BugZero Fix`);
       console.log(`   Path:        ${cwd}`);
       console.log(`   Framework:   ${framework}`);
+      console.log(`   Package manager: ${packageManager}`);
       console.log(`   Max attempts: ${maxAttempts}`);
       if (dryRun) console.log(`   Mode:        DRY RUN (no files will be modified)`);
       console.log();

@@ -95,6 +95,7 @@ bugzero rescue
 | Autonomous repair loop | Runs analyze, patch, verify in a stateful LangGraph graph |
 | Multi-model support | DeepSeek, Claude, GPT-4o, Gemini, Llama via OpenRouter |
 | Framework detection | Automatically identifies your project's tooling setup |
+| Package manager detection | Runs build/lint/test with npm, pnpm, yarn, or bun — whichever the target project actually uses |
 | **Multi-file patches** | A single fix attempt can edit several files at once, applied atomically — if any file's patch fails, every file touched in that attempt is rolled back |
 | **Fuzzy patch matching** | Falls back from exact match to whitespace-normalized and similarity-scored matching when the AI's snippet doesn't match the file verbatim |
 | Safe file patching | Every modified file receives a `.opspilot.bak` backup |
