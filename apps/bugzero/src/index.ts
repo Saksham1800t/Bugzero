@@ -2,16 +2,19 @@
 
 import "@opspilot/config"; // loads .env before anything else
 import { Command } from "commander";
+import fs from "fs";
 import path from "path";
 import { orchestrate, orchestrateAndFix, detectFramework, detectPackageManager } from "@opspilot/core";
 
+// dist/index.js sits one level below the package root, where package.json is always published
+const { version } = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf-8"));
 
 const program = new Command();
 
 program
   .name("bugzero")
   .description("AI-powered build issue fixer — detects and repairs build errors automatically")
-  .version("0.0.1");
+  .version(version);
 
 // ── bugzero hunt ─────────────────────────────────────────────────────────────
 program

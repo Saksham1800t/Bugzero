@@ -8,7 +8,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/bugzero.svg?style=flat-square)](https://www.npmjs.com/package/bugzero)
 [![CI](https://img.shields.io/github/actions/workflow/status/Saksham1800t/Bugzero/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/Saksham1800t/Bugzero/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](https://opensource.org/licenses/MIT)
-[![Node.js](https://img.shields.io/badge/Node.js-18%2B-green?style=flat-square)](https://nodejs.org)
+[![Node.js](https://img.shields.io/badge/Node.js-22.12%2B-green?style=flat-square)](https://nodejs.org)
 [![pnpm](https://img.shields.io/badge/maintained%20with-pnpm-cc00ff.svg?style=flat-square)](https://pnpm.io/)
 
 **BugZero** is an autonomous, AI-powered CLI that detects and repairs build, lint, and test failures — locally or as a GitHub Action that opens the fix as a pull request.
@@ -88,22 +88,30 @@ bugzero rescue
 
 ---
 
-## Key Features
+## Features
 
-| Feature | Description |
-|---|---|
-| Autonomous repair loop | Runs analyze, patch, verify in a stateful LangGraph graph |
-| Multi-model support | DeepSeek, Claude, GPT-4o, Gemini, Llama via OpenRouter |
-| Framework detection | Automatically identifies your project's tooling setup |
-| Package manager detection | Runs build/lint/test with npm, pnpm, yarn, or bun — whichever the target project actually uses |
-| **Multi-file patches** | A single fix attempt can edit several files at once, applied atomically — if any file's patch fails, every file touched in that attempt is rolled back |
-| **Fuzzy patch matching** | Falls back from exact match to whitespace-normalized and similarity-scored matching when the AI's snippet doesn't match the file verbatim |
-| Safe file patching | Every modified file receives a `.opspilot.bak` backup |
-| Error type parsing | Parses TypeScript, ESLint, and Jest error formats |
-| Dry-run mode | Analyze and report without writing any files |
-| Local model config | Save preferred model to `.bugzerorc` per project |
-| Markdown Reports | Auto-generates a detailed `bugzero-report.md` with error logs, model name, token usage, and code diffs — plus a clickable link straight to your terminal |
-| **GitHub Action mode** | Run the same repair loop in CI and open a pull request with the fix instead of patching a local checkout — see below |
+### Repair engine
+
+- **Autonomous repair loop.** `bugzero rescue` runs your build, lint, and tests. When something fails, it sends the error output — along with the relevant source files and directory listings as context — to an LLM, applies the fix the model proposes, and re-runs validation. It repeats, feeding any patch failures back to the model, until everything passes or the attempt limit is reached (3 by default; change it with `--max-attempts`). The loop is a stateful LangGraph graph: analyze, patch, verify.
+- **Multi-file patches.** One fix can edit several files at once — for example, a renamed export plus every file that imports it. All patches in an attempt are applied as a single atomic unit: if any one of them fails to apply, every file touched in that attempt is restored to its original content, so you never end up with a half-applied fix.
+- **Fuzzy patch matching.** LLMs rarely reproduce code byte-for-byte, so BugZero locates each patch in three tiers: an exact match first, then a whitespace-normalized line match (tolerates indentation and spacing drift), then a similarity-scored match (average per-line similarity of at least 85%). If two locations look equally plausible, it refuses to guess and reports a failed patch instead of risking an edit in the wrong place.
+- **Multi-model support.** Works with any model available on OpenRouter — DeepSeek, Claude, Gemini, GPT-4o, Llama, and more. Choose one interactively with `bugzero vibe`; the choice is saved per project in `.bugzerorc`.
+
+### Safety
+
+- **Backups on every patch.** Each file BugZero modifies gets a `.opspilot.bak` copy of its original content first.
+- **Dry-run mode.** `bugzero rescue --dry-run` runs validation and error analysis, but makes no fix attempts and never modifies your source files (a report is still written).
+
+### Project awareness
+
+- **Framework detection.** Identifies Next.js, NestJS, Vite, Remix, Astro, SvelteKit, Nuxt, Angular, Create React App, or a plain TypeScript project from its config files and dependencies, and shows the result in the run banner.
+- **Package manager detection.** Runs build, lint, and test with the tool your project actually uses — npm, pnpm, yarn, or bun. It checks the `packageManager` field in `package.json` first, then `pnpm-workspace.yaml` or a lockfile, and falls back to npm.
+- **Error parsing.** Recognizes TypeScript compiler errors (file, line, column, message), ESLint errors, and Jest failures to classify what broke and how many errors were found. Output in any other format is still passed to the model as raw logs.
+
+### Integrations and output
+
+- **Markdown reports.** Every `hunt` and `rescue` run writes `bugzero-report.md` to the target project: a pass/fail summary of build, lint, and tests, the full error logs, the model used, token usage, and before/after diffs for every file patched. The terminal prints a clickable link straight to it.
+- **GitHub Action mode.** Run the same repair loop in CI. Instead of patching a local checkout, the Action commits every changed file in one atomic commit through the GitHub API and opens a pull request — see [GitHub Action Mode](#github-action-mode) below.
 
 ---
 
@@ -268,7 +276,7 @@ BugZero provides clear, actionable output for common failure modes:
 Clone the repository and install dependencies. This project uses a pnpm monorepo managed by Turborepo, with a Vitest test suite and GitHub Actions CI.
 
 ### Prerequisites
-- Node.js 18 or later
+- Node.js 22.12 or later
 - pnpm
 
 ### Install & build

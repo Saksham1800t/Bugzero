@@ -1,11 +1,48 @@
 {
   "name": "bugzero",
-  "version": "0.0.35",
-  "description": "An autonomous, AI-powered CLI tool for automatic build error detection and repair.",
+  "version": "0.0.36",
+  "description": "Autonomous AI-powered CLI and GitHub Action that detects build, lint, and test failures, generates multi-file patches, applies them atomically with fuzzy matching, and re-verifies until your project is green.",
   "license": "MIT",
+  "author": "Saksham Agarwal (https://github.com/Saksham1800t)",
+  "homepage": "https://github.com/Saksham1800t/Bugzero#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Saksham1800t/Bugzero.git",
+    "directory": "apps/bugzero"
+  },
+  "bugs": {
+    "url": "https://github.com/Saksham1800t/Bugzero/issues"
+  },
+  "keywords": [
+    "ai",
+    "llm",
+    "autofix",
+    "auto-fix",
+    "build-fixer",
+    "bug-fix",
+    "code-repair",
+    "self-healing",
+    "typescript",
+    "eslint",
+    "jest",
+    "cli",
+    "langgraph",
+    "openrouter",
+    "github-action",
+    "ci",
+    "developer-tools"
+  ],
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "bin": {
     "bugzero": "dist/index.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "dependencies": {
     "@langchain/core": "^1.1.48",
     "@langchain/langgraph": "^1.3.2",
@@ -21,6 +58,6 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "tsup src/index.ts --format cjs --dts"
+    "build": "tsup src/index.ts --format cjs --dts --clean"
   }
 }
