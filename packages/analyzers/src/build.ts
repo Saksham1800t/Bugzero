@@ -1,5 +1,3 @@
-import { detectPackageManager, getRunScriptCommand } from "./package-manager";
-import { runCommand } from "./run-command";
+import { runScript } from "./scripts";
 
-export const runBuild = (cwd?: string) =>
-  runCommand(getRunScriptCommand(detectPackageManager(cwd), "build"), cwd);
+export const runBuild = (cwd?: string) => runScript("build", cwd);

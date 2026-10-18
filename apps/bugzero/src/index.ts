@@ -35,9 +35,11 @@ program
       const { build, lint, test } = await orchestrate({ cwd });
 
       console.log("── Pipeline Summary ───────────────────────────");
-      console.log(`   Build: ${build.success ? "✅ Passed" : "❌ Failed (see report)"}`);
-      console.log(`   Lint:  ${lint.success ? "✅ Passed" : "❌ Failed (see report)"}`);
-      console.log(`   Tests: ${test.success ? "✅ Passed" : "❌ Failed (see report)"}`);
+      const label = (r: { success: boolean; skipped?: boolean }) =>
+        r.skipped ? "⏭️  Skipped (no script)" : r.success ? "✅ Passed" : "❌ Failed (see report)";
+      console.log(`   Build: ${label(build)}`);
+      console.log(`   Lint:  ${label(lint)}`);
+      console.log(`   Tests: ${label(test)}`);
       console.log("───────────────────────────────────────────────");
 
       const allPassed = build.success && lint.success && test.success;

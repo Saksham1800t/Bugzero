@@ -5,7 +5,13 @@ import fs from "fs";
 import path from "path";
 import { pathToFileURL } from "url";
 import { detectFramework } from "./framework-detector";
+import { assertNodeProject } from "./project-check";
 import { OpenRouterProvider } from "@opspilot/ai-provider";
+
+function statusLabel(result: { success: boolean; skipped?: boolean }): string {
+  if (result.skipped) return "⏭️ Skipped (no script defined)";
+  return result.success ? "✅ Passed" : "❌ Failed";
+}
 
 export interface OrchestrateOptions {
   /** Absolute path to the target project (defaults to process.cwd()) */
@@ -19,6 +25,7 @@ export interface OrchestrateOptions {
 /** Run build, lint and tests — return raw results without touching files. */
 export async function orchestrate(options: OrchestrateOptions = {}) {
   const cwd = options.cwd ?? process.cwd();
+  assertNodeProject(cwd);
   const [build, lint, test] = await Promise.all([
     runBuild(cwd),
     runLint(cwd),
@@ -44,6 +51,7 @@ export async function orchestrateAndFix(
   options: OrchestrateOptions = {}
 ): Promise<FixResult> {
   const cwd = options.cwd ?? process.cwd();
+  assertNodeProject(cwd);
   const maxAttempts = options.maxAttempts ?? 3;
 
   // ── Step 1: Initial validation run ──────────────────────────────────────
@@ -193,9 +201,9 @@ Generate the Markdown report directly. Do not wrap it in markdown block fences (
 **Framework:** \`${detectFramework(cwd)}\`
 
 ## 📊 Status Summary
-- **Build:** ${build.success ? "✅ Passed" : "❌ Failed"}
-- **Lint:** ${lint.success ? "✅ Passed" : "❌ Failed"}
-- **Test:** ${test.success ? "✅ Passed" : "❌ Failed"}
+- **Build:** ${statusLabel(build)}
+- **Lint:** ${statusLabel(lint)}
+- **Test:** ${statusLabel(test)}
 
 ## ❌ Failed Checks & Error Output
 ${logs}
@@ -214,9 +222,9 @@ ${logs}
 **Framework:** \`${detectFramework(cwd)}\`
 
 ## 📊 Status Summary
-- **Build:** ✅ Passed
-- **Lint:** ✅ Passed
-- **Test:** ✅ Passed
+- **Build:** ${statusLabel(build)}
+- **Lint:** ${statusLabel(lint)}
+- **Test:** ${statusLabel(test)}
 
 🎉 **All checks passed! Your project is in perfect shape.**`;
     }

@@ -2,6 +2,25 @@ import fs from "fs";
 import path from "path";
 import { pathToFileURL } from "url";
 
+// Keep prompts within a sane size so a huge failing test run or a giant source
+// file can't blow past the model's context window or burn tokens.
+const MAX_LOG_CHARS = 20_000;
+const MAX_FILE_CHARS = 20_000;
+const MAX_CONTEXT_CHARS = 60_000;
+
+/**
+ * Shortens very long log output by keeping its beginning (where the first
+ * errors usually are) and its end (where summaries usually are), dropping the
+ * middle. Output within the limit is returned unchanged.
+ */
+export function truncateLogs(logs: string, maxChars: number = MAX_LOG_CHARS): string {
+  if (logs.length <= maxChars) return logs;
+  const head = logs.slice(0, Math.floor(maxChars * 0.6));
+  const tail = logs.slice(logs.length - Math.floor(maxChars * 0.4));
+  const omitted = logs.length - head.length - tail.length;
+  return `${head}\n\n... [${omitted} characters of log output omitted to fit the model's context] ...\n\n${tail}`;
+}
+
 function resolveExistingPathPrefix(candidate: string): string | null {
   // Clean up common trailing characters in logs like line/col numbers, quotes, parentheses, brackets
   let current = candidate
@@ -92,10 +111,15 @@ function getContextFiles(logs: string, cwd: string): string {
       return;
     }
     if (processedFiles.has(filePath)) return;
+    if (context.length >= MAX_CONTEXT_CHARS) return;
     processedFiles.add(filePath);
 
     try {
-      const content = fs.readFileSync(filePath, "utf-8");
+      let content = fs.readFileSync(filePath, "utf-8");
+      if (content.length > MAX_FILE_CHARS) {
+        const omitted = content.length - MAX_FILE_CHARS;
+        content = `${content.slice(0, MAX_FILE_CHARS)}\n... [file truncated: ${omitted} more characters not shown]`;
+      }
       context += `\n--- File: ${relPath} ---\n\`\`\`\n${content}\n\`\`\`\n`;
     } catch {
       // Ignore
@@ -181,11 +205,13 @@ export function buildAnalysisPrompt(errorOutput: string, cwd: string): string {
       .join("\n\n")}\n\n**CRITICAL RULE:** Do NOT suggest modifying or creating the files listed under "Previous Failed Attempts" if they failed with a "File not found" or "Search string not found" error. You must inspect the compiler error logs below to find the actual file that exists and contains the error.`;
   }
 
+  compilerLogs = truncateLogs(compilerLogs);
+
   const contextSection = getContextFiles(compilerLogs, cwd);
 
   return `You are an expert software engineer specialising in fixing build, lint, and test failures.
 
-A project located at "${cwd}" failed to build. Here is the complete error output:
+A project located at "${cwd}" failed to build. Here is the error output (very long output is shortened in the middle):
 
 \`\`\`
 ${compilerLogs}

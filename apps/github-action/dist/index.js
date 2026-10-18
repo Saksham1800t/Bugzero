@@ -26141,15 +26141,19 @@ var require_dist = __commonJS({
       detectPackageManager: () => detectPackageManager2,
       getRunScriptCommand: () => getRunScriptCommand,
       parseErrors: () => parseErrors,
+      readScripts: () => readScripts,
       runBuild: () => runBuild,
       runCommand: () => runCommand,
       runLint: () => runLint,
+      runScript: () => runScript,
       runTests: () => runTests,
       runValidationPipeline: () => runValidationPipeline
     });
     module2.exports = __toCommonJS2(index_exports);
     var import_fs2 = __toESM2(require("fs"));
     var import_path2 = __toESM2(require("path"));
+    var import_fs3 = __toESM2(require("fs"));
+    var import_path3 = __toESM2(require("path"));
     var VALID_MANAGERS = ["npm", "pnpm", "yarn", "bun"];
     var LOCKFILE_MANAGERS = [
       { file: "pnpm-workspace.yaml", manager: "pnpm" },
@@ -26161,9 +26165,9 @@ var require_dist = __commonJS({
     ];
     function detectPackageManager2(cwd = process.cwd()) {
       try {
-        const pkgPath = import_path2.default.join(cwd, "package.json");
-        if (import_fs2.default.existsSync(pkgPath)) {
-          const pkg = JSON.parse(import_fs2.default.readFileSync(pkgPath, "utf-8"));
+        const pkgPath = import_path3.default.join(cwd, "package.json");
+        if (import_fs3.default.existsSync(pkgPath)) {
+          const pkg = JSON.parse(import_fs3.default.readFileSync(pkgPath, "utf-8"));
           if (typeof pkg.packageManager === "string") {
             const name = pkg.packageManager.split("@")[0].trim();
             if (VALID_MANAGERS.includes(name)) {
@@ -26174,7 +26178,7 @@ var require_dist = __commonJS({
       } catch {
       }
       for (const { file, manager } of LOCKFILE_MANAGERS) {
-        if (import_fs2.default.existsSync(import_path2.default.join(cwd, file))) return manager;
+        if (import_fs3.default.existsSync(import_path3.default.join(cwd, file))) return manager;
       }
       return "npm";
     }
@@ -26204,9 +26208,26 @@ var require_dist = __commonJS({
         };
       }
     }
-    var runBuild = (cwd) => runCommand(getRunScriptCommand(detectPackageManager2(cwd), "build"), cwd);
-    var runLint = (cwd) => runCommand(getRunScriptCommand(detectPackageManager2(cwd), "lint"), cwd);
-    var runTests = (cwd) => runCommand(getRunScriptCommand(detectPackageManager2(cwd), "test"), cwd);
+    function readScripts(cwd = process.cwd()) {
+      try {
+        const pkgPath = import_path2.default.join(cwd, "package.json");
+        if (!import_fs2.default.existsSync(pkgPath)) return [];
+        const pkg = JSON.parse(import_fs2.default.readFileSync(pkgPath, "utf-8"));
+        if (typeof pkg.scripts !== "object" || pkg.scripts === null) return [];
+        return Object.keys(pkg.scripts);
+      } catch {
+        return [];
+      }
+    }
+    async function runScript(script, cwd) {
+      if (!readScripts(cwd).includes(script)) {
+        return { success: true, output: "", skipped: true };
+      }
+      return runCommand(getRunScriptCommand(detectPackageManager2(cwd), script), cwd);
+    }
+    var runBuild = (cwd) => runScript("build", cwd);
+    var runLint = (cwd) => runScript("lint", cwd);
+    var runTests = (cwd) => runScript("test", cwd);
     var TS_ERROR_RE = /^(.+)\((\d+),(\d+)\):\s+error\s+TS\d+:\s+(.+)$/gm;
     var ESLINT_ERROR_RE = /^\s+(\d+):(\d+)\s+error\s+(.+)$/gm;
     var JEST_FAIL_RE = /● (.+)/g;
@@ -26256,37 +26277,29 @@ var require_dist = __commonJS({
       }
       return errors;
     }
-    var import_fs22 = __toESM2(require("fs"));
-    var import_path22 = __toESM2(require("path"));
+    var STEPS = [
+      { step: "build", label: "build", run: runBuild },
+      { step: "lint", label: "lint", run: runLint },
+      { step: "test", label: "tests", run: runTests }
+    ];
     async function runValidationPipeline(cwd) {
       const targetCwd = cwd ?? process.cwd();
-      let scripts = [];
-      try {
-        const pkgPath = import_path22.default.resolve(targetCwd, "package.json");
-        if (import_fs22.default.existsSync(pkgPath)) {
-          const pkg = JSON.parse(import_fs22.default.readFileSync(pkgPath, "utf-8"));
-          scripts = Object.keys(pkg.scripts || {});
+      const scripts = readScripts(targetCwd);
+      let ranAnyStep = false;
+      for (const { step, label, run: run2 } of STEPS) {
+        if (!scripts.includes(step)) {
+          console.log(`[BugZero] Skipping ${label}: no "${step}" script in package.json.`);
+          continue;
         }
-      } catch {
-      }
-      console.log(`[BugZero] Running build...`);
-      const buildRes = await runBuild(targetCwd);
-      if (!buildRes.success) {
-        return { success: false, step: "build", output: buildRes.output };
-      }
-      if (scripts.includes("lint")) {
-        console.log(`[BugZero] Running lint...`);
-        const lintRes = await runLint(targetCwd);
-        if (!lintRes.success) {
-          return { success: false, step: "lint", output: lintRes.output };
+        ranAnyStep = true;
+        console.log(`[BugZero] Running ${label}...`);
+        const result = await run2(targetCwd);
+        if (!result.success) {
+          return { success: false, step, output: result.output };
         }
       }
-      if (scripts.includes("test")) {
-        console.log(`[BugZero] Running tests...`);
-        const testRes = await runTests(targetCwd);
-        if (!testRes.success) {
-          return { success: false, step: "test", output: testRes.output };
-        }
+      if (!ranAnyStep) {
+        console.warn(`[BugZero] No build, lint, or test scripts found in package.json \u2014 nothing to validate.`);
       }
       return { success: true, step: "none", output: "" };
     }
@@ -110534,11 +110547,26 @@ var require_dist9 = __commonJS({
     var __toCommonJS2 = (mod) => __copyProps2(__defProp2({}, "__esModule", { value: true }), mod);
     var index_exports = {};
     __export2(index_exports, {
-      buildAnalysisPrompt: () => buildAnalysisPrompt
+      buildAnalysisPrompt: () => buildAnalysisPrompt,
+      truncateLogs: () => truncateLogs
     });
     module2.exports = __toCommonJS2(index_exports);
     var import_fs2 = __toESM2(require("fs"));
     var import_path2 = __toESM2(require("path"));
+    var MAX_LOG_CHARS = 2e4;
+    var MAX_FILE_CHARS = 2e4;
+    var MAX_CONTEXT_CHARS = 6e4;
+    function truncateLogs(logs, maxChars = MAX_LOG_CHARS) {
+      if (logs.length <= maxChars) return logs;
+      const head = logs.slice(0, Math.floor(maxChars * 0.6));
+      const tail = logs.slice(logs.length - Math.floor(maxChars * 0.4));
+      const omitted = logs.length - head.length - tail.length;
+      return `${head}
+
+... [${omitted} characters of log output omitted to fit the model's context] ...
+
+${tail}`;
+    }
     function resolveExistingPathPrefix(candidate) {
       let current = candidate.replace(/(?::\d+)+$/, "").replace(/['"()\[\]`]+$/, "").trim();
       while (current.length > 0) {
@@ -110601,9 +110629,15 @@ var require_dist9 = __commonJS({
           return;
         }
         if (processedFiles.has(filePath)) return;
+        if (context2.length >= MAX_CONTEXT_CHARS) return;
         processedFiles.add(filePath);
         try {
-          const content = import_fs2.default.readFileSync(filePath, "utf-8");
+          let content = import_fs2.default.readFileSync(filePath, "utf-8");
+          if (content.length > MAX_FILE_CHARS) {
+            const omitted = content.length - MAX_FILE_CHARS;
+            content = `${content.slice(0, MAX_FILE_CHARS)}
+... [file truncated: ${omitted} more characters not shown]`;
+          }
           context2 += `
 --- File: ${relPath} ---
 \`\`\`
@@ -110688,10 +110722,11 @@ ${w}`).join("\n\n")}
 
 **CRITICAL RULE:** Do NOT suggest modifying or creating the files listed under "Previous Failed Attempts" if they failed with a "File not found" or "Search string not found" error. You must inspect the compiler error logs below to find the actual file that exists and contains the error.`;
       }
+      compilerLogs = truncateLogs(compilerLogs);
       const contextSection = getContextFiles(compilerLogs, cwd);
       return `You are an expert software engineer specialising in fixing build, lint, and test failures.
 
-A project located at "${cwd}" failed to build. Here is the complete error output:
+A project located at "${cwd}" failed to build. Here is the error output (very long output is shortened in the middle):
 
 \`\`\`
 ${compilerLogs}
@@ -111201,12 +111236,24 @@ var require_dist12 = __commonJS({
     }
     var import_analyzers = require_dist();
     var import_agents = require_dist11();
+    var import_fs3 = __toESM2(require("fs"));
+    var import_path3 = __toESM2(require("path"));
+    var import_url = require("url");
     var import_fs22 = __toESM2(require("fs"));
     var import_path22 = __toESM2(require("path"));
-    var import_url = require("url");
+    function assertNodeProject(cwd) {
+      if (!import_fs22.default.existsSync(import_path22.default.join(cwd, "package.json"))) {
+        throw new Error(`No package.json found in ${cwd}. Point --path at a Node.js project.`);
+      }
+    }
     var import_ai_provider = require_dist8();
+    function statusLabel(result) {
+      if (result.skipped) return "\u23ED\uFE0F Skipped (no script defined)";
+      return result.success ? "\u2705 Passed" : "\u274C Failed";
+    }
     async function orchestrate(options = {}) {
       const cwd = options.cwd ?? process.cwd();
+      assertNodeProject(cwd);
       const [build, lint, test] = await Promise.all([
         (0, import_analyzers.runBuild)(cwd),
         (0, import_analyzers.runLint)(cwd),
@@ -111222,6 +111269,7 @@ var require_dist12 = __commonJS({
     }
     async function orchestrateAndFix2(options = {}) {
       const cwd = options.cwd ?? process.cwd();
+      assertNodeProject(cwd);
       const maxAttempts = options.maxAttempts ?? 3;
       console.log(`[BugZero] Running validation pipeline in: ${cwd}`);
       const pipelineResult = await (0, import_analyzers.runValidationPipeline)(cwd);
@@ -111354,9 +111402,9 @@ Generate the Markdown report directly. Do not wrap it in markdown block fences (
 **Framework:** \`${detectFramework(cwd)}\`
 
 ## \u{1F4CA} Status Summary
-- **Build:** ${build.success ? "\u2705 Passed" : "\u274C Failed"}
-- **Lint:** ${lint.success ? "\u2705 Passed" : "\u274C Failed"}
-- **Test:** ${test.success ? "\u2705 Passed" : "\u274C Failed"}
+- **Build:** ${statusLabel(build)}
+- **Lint:** ${statusLabel(lint)}
+- **Test:** ${statusLabel(test)}
 
 ## \u274C Failed Checks & Error Output
 ${logs}
@@ -111375,9 +111423,9 @@ ${logs}
 **Framework:** \`${detectFramework(cwd)}\`
 
 ## \u{1F4CA} Status Summary
-- **Build:** \u2705 Passed
-- **Lint:** \u2705 Passed
-- **Test:** \u2705 Passed
+- **Build:** ${statusLabel(build)}
+- **Lint:** ${statusLabel(lint)}
+- **Test:** ${statusLabel(test)}
 
 \u{1F389} **All checks passed! Your project is in perfect shape.**`;
         }
@@ -111482,9 +111530,9 @@ ${rawOutput}
 
 ---
 *Report generated by **BugZero** on ${(/* @__PURE__ */ new Date()).toLocaleString()}*`;
-      const reportPath = import_path22.default.resolve(cwd, "bugzero-report.md");
+      const reportPath = import_path3.default.resolve(cwd, "bugzero-report.md");
       try {
-        import_fs22.default.writeFileSync(reportPath, content, "utf-8");
+        import_fs3.default.writeFileSync(reportPath, content, "utf-8");
         const clickableUrl = (0, import_url.pathToFileURL)(reportPath).toString();
         console.log(`
 \u{1F4DD} Generated report successfully!

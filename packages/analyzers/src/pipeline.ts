@@ -1,7 +1,6 @@
-import fs from "fs";
-import path from "path";
 import { runBuild } from "./build";
 import { runLint } from "./lint";
+import { readScripts } from "./scripts";
 import { runTests } from "./test";
 
 export interface PipelineResult {
@@ -10,44 +9,38 @@ export interface PipelineResult {
   output: string;
 }
 
+const STEPS = [
+  { step: "build", label: "build", run: runBuild },
+  { step: "lint", label: "lint", run: runLint },
+  { step: "test", label: "tests", run: runTests },
+] as const;
+
+/**
+ * Runs the project's build, lint, and test scripts in order, stopping at the
+ * first failure. Steps the project doesn't define a script for are skipped.
+ */
 export async function runValidationPipeline(cwd?: string): Promise<PipelineResult> {
   const targetCwd = cwd ?? process.cwd();
+  const scripts = readScripts(targetCwd);
 
-  // 1. Read package.json to see which scripts exist
-  let scripts: string[] = [];
-  try {
-    const pkgPath = path.resolve(targetCwd, "package.json");
-    if (fs.existsSync(pkgPath)) {
-      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-      scripts = Object.keys(pkg.scripts || {});
+  let ranAnyStep = false;
+
+  for (const { step, label, run } of STEPS) {
+    if (!scripts.includes(step)) {
+      console.log(`[BugZero] Skipping ${label}: no "${step}" script in package.json.`);
+      continue;
     }
-  } catch {
-    // Ignore error
-  }
 
-  // 2. Run Build
-  console.log(`[BugZero] Running build...`);
-  const buildRes = await runBuild(targetCwd);
-  if (!buildRes.success) {
-    return { success: false, step: "build", output: buildRes.output };
-  }
-
-  // 3. Run Lint (if "lint" script exists)
-  if (scripts.includes("lint")) {
-    console.log(`[BugZero] Running lint...`);
-    const lintRes = await runLint(targetCwd);
-    if (!lintRes.success) {
-      return { success: false, step: "lint", output: lintRes.output };
+    ranAnyStep = true;
+    console.log(`[BugZero] Running ${label}...`);
+    const result = await run(targetCwd);
+    if (!result.success) {
+      return { success: false, step, output: result.output };
     }
   }
 
-  // 4. Run Test (if "test" script exists)
-  if (scripts.includes("test")) {
-    console.log(`[BugZero] Running tests...`);
-    const testRes = await runTests(targetCwd);
-    if (!testRes.success) {
-      return { success: false, step: "test", output: testRes.output };
-    }
+  if (!ranAnyStep) {
+    console.warn(`[BugZero] No build, lint, or test scripts found in package.json — nothing to validate.`);
   }
 
   return { success: true, step: "none", output: "" };

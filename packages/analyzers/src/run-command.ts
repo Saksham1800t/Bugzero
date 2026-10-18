@@ -1,6 +1,8 @@
 export interface CommandResult {
   success: boolean;
   output: string;
+  /** True when the step was not run because the project doesn't define that script. */
+  skipped?: boolean;
 }
 
 export async function runCommand(

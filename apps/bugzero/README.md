@@ -101,11 +101,13 @@ bugzero rescue
 
 - **Backups on every patch.** Each file BugZero modifies gets a `.opspilot.bak` copy of its original content first.
 - **Dry-run mode.** `bugzero rescue --dry-run` runs validation and error analysis, but makes no fix attempts and never modifies your source files (a report is still written).
+- **Prompt size limits.** Very long error output and very large source files are shortened before being sent to the model (for logs, the start and end are kept), so a big failure can't exceed the model's context window or waste tokens.
 
 ### Project awareness
 
 - **Framework detection.** Identifies Next.js, NestJS, Vite, Remix, Astro, SvelteKit, Nuxt, Angular, Create React App, or a plain TypeScript project from its config files and dependencies, and shows the result in the run banner.
 - **Package manager detection.** Runs build, lint, and test with the tool your project actually uses — npm, pnpm, yarn, or bun. It checks the `packageManager` field in `package.json` first, then `pnpm-workspace.yaml` or a lockfile, and falls back to npm.
+- **Script-aware validation.** Only runs the build, lint, and test scripts your `package.json` actually defines. A missing script is reported as skipped rather than failed, so a project without a `lint` script no longer shows a false lint failure. Pointing `--path` at a directory with no `package.json` stops immediately with a clear error.
 - **Error parsing.** Recognizes TypeScript compiler errors (file, line, column, message), ESLint errors, and Jest failures to classify what broke and how many errors were found. Output in any other format is still passed to the model as raw logs.
 
 ### Integrations and output
