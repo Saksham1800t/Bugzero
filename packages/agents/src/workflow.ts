@@ -131,4 +131,22 @@ export const workflow = new StateGraph(GraphState)
   .addConditionalEdges("verify", shouldRetry as any)
   .compile();
 
+export interface RepairInput {
+  cwd: string;
+  logs: string;
+  maxAttempts: number;
+}
+
+/**
+ * Runs the repair graph. Each attempt takes three graph steps (analyze →
+ * apply_fix → verify), so LangGraph's default recursion limit of 25 would
+ * abort any run asking for more than ~8 attempts; scale it to the request.
+ */
+export function runRepairWorkflow(input: RepairInput) {
+  return workflow.invoke(
+    { ...input, attempts: 0, success: false },
+    { recursionLimit: input.maxAttempts * 3 + 5 }
+  );
+}
+
 

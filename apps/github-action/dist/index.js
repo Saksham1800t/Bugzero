@@ -111008,6 +111008,7 @@ var require_dist11 = __commonJS({
     var __toCommonJS2 = (mod) => __copyProps2(__defProp2({}, "__esModule", { value: true }), mod);
     var index_exports = {};
     __export2(index_exports, {
+      runRepairWorkflow: () => runRepairWorkflow,
       workflow: () => workflow
     });
     module2.exports = __toCommonJS2(index_exports);
@@ -111165,6 +111166,12 @@ Any other files from that same suggestion were rolled back to keep the change at
       return "analyze";
     }
     var workflow = new import_langgraph2.StateGraph(GraphState).addNode("analyze", analyzeNode).addNode("apply_fix", applyFixNode).addNode("verify", verifyNode).addEdge(import_langgraph2.START, "analyze").addEdge("analyze", "apply_fix").addEdge("apply_fix", "verify").addConditionalEdges("verify", shouldRetry).compile();
+    function runRepairWorkflow(input) {
+      return workflow.invoke(
+        { ...input, attempts: 0, success: false },
+        { recursionLimit: input.maxAttempts * 3 + 5 }
+      );
+    }
   }
 });
 
@@ -111201,10 +111208,12 @@ var require_dist12 = __commonJS({
     var __toCommonJS2 = (mod) => __copyProps2(__defProp2({}, "__esModule", { value: true }), mod);
     var index_exports = {};
     __export2(index_exports, {
+      DEFAULT_MAX_ATTEMPTS: () => DEFAULT_MAX_ATTEMPTS,
       detectFramework: () => detectFramework,
       detectPackageManager: () => import_analyzers2.detectPackageManager,
       orchestrate: () => orchestrate,
-      orchestrateAndFix: () => orchestrateAndFix2
+      orchestrateAndFix: () => orchestrateAndFix2,
+      resolveMaxAttempts: () => resolveMaxAttempts
     });
     module2.exports = __toCommonJS2(index_exports);
     var import_fs2 = __toESM2(require("fs"));
@@ -111239,6 +111248,14 @@ var require_dist12 = __commonJS({
     var import_fs3 = __toESM2(require("fs"));
     var import_path3 = __toESM2(require("path"));
     var import_url = require("url");
+    var DEFAULT_MAX_ATTEMPTS = 3;
+    function resolveMaxAttempts(value) {
+      const attempts = value ?? DEFAULT_MAX_ATTEMPTS;
+      if (!Number.isInteger(attempts) || attempts < 1) {
+        throw new Error(`--max-attempts must be a whole number of 1 or more (received ${value}).`);
+      }
+      return attempts;
+    }
     var import_fs22 = __toESM2(require("fs"));
     var import_path22 = __toESM2(require("path"));
     function assertNodeProject(cwd) {
@@ -111270,7 +111287,7 @@ var require_dist12 = __commonJS({
     async function orchestrateAndFix2(options = {}) {
       const cwd = options.cwd ?? process.cwd();
       assertNodeProject(cwd);
-      const maxAttempts = options.maxAttempts ?? 3;
+      const maxAttempts = resolveMaxAttempts(options.maxAttempts);
       console.log(`[BugZero] Running validation pipeline in: ${cwd}`);
       const pipelineResult = await (0, import_analyzers.runValidationPipeline)(cwd);
       if (pipelineResult.success) {
@@ -111301,12 +111318,10 @@ var require_dist12 = __commonJS({
           error: "Dry-run: analysis complete, no files modified."
         };
       }
-      const finalState = await import_agents.workflow.invoke({
+      const finalState = await (0, import_agents.runRepairWorkflow)({
         cwd,
         logs: pipelineResult.output,
-        maxAttempts,
-        attempts: 0,
-        success: false
+        maxAttempts
       });
       const result = {
         success: finalState.success,
@@ -111634,7 +111649,7 @@ async function run(options) {
 async function main() {
   try {
     const cwd = core.getInput("path") || process.cwd();
-    const maxAttempts = parseInt(core.getInput("max-attempts") || "3", 10);
+    const maxAttempts = Number(core.getInput("max-attempts") || "3");
     const token = core.getInput("github-token", { required: true });
     const baseBranch = core.getInput("base-branch") || github.context.ref.replace("refs/heads/", "") || "main";
     const octokit = github.getOctokit(token);

@@ -21,7 +21,7 @@ vi.mock("@opspilot/analyzers", () => ({
   runValidationPipeline: mockRunValidationPipeline,
 }));
 
-import { workflow } from "./workflow";
+import { runRepairWorkflow, workflow } from "./workflow";
 
 const validFix = {
   rootCause: "Missing semicolon",
@@ -209,5 +209,21 @@ describe("bugzero repair workflow", () => {
     expect(finalState.success).toBe(false);
     expect(finalState.attempts).toBe(2);
     expect(mockInvoke).toHaveBeenCalledTimes(2);
+  });
+
+  it("supports more attempts than LangGraph's default recursion limit allows", async () => {
+    mockInvoke.mockResolvedValue(aiResponse(JSON.stringify(validFix)));
+    mockApplyPatches.mockReturnValue({ success: true, applied: [appliedPatch("src/index.ts")] });
+    mockRunValidationPipeline.mockResolvedValue({ success: false, step: "build", output: "still broken" });
+
+    const finalState = await runRepairWorkflow({
+      cwd: "/project",
+      logs: "original error logs",
+      maxAttempts: 12,
+    });
+
+    expect(finalState.attempts).toBe(12);
+    expect(mockInvoke).toHaveBeenCalledTimes(12);
+    expect(finalState.success).toBe(false);
   });
 });

@@ -1,10 +1,11 @@
 import { runBuild, runLint, runTests, parseErrors, runValidationPipeline } from "@opspilot/analyzers";
-import { workflow } from "@opspilot/agents";
+import { runRepairWorkflow } from "@opspilot/agents";
 import type { FixResult } from "@opspilot/shared";
 import fs from "fs";
 import path from "path";
 import { pathToFileURL } from "url";
 import { detectFramework } from "./framework-detector";
+import { resolveMaxAttempts } from "./options";
 import { assertNodeProject } from "./project-check";
 import { OpenRouterProvider } from "@opspilot/ai-provider";
 
@@ -52,7 +53,7 @@ export async function orchestrateAndFix(
 ): Promise<FixResult> {
   const cwd = options.cwd ?? process.cwd();
   assertNodeProject(cwd);
-  const maxAttempts = options.maxAttempts ?? 3;
+  const maxAttempts = resolveMaxAttempts(options.maxAttempts);
 
   // ── Step 1: Initial validation run ──────────────────────────────────────
   console.log(`[BugZero] Running validation pipeline in: ${cwd}`);
@@ -91,12 +92,10 @@ export async function orchestrateAndFix(
   }
 
   // ── Step 3: AI fix loop via LangGraph ───────────────────────────────────
-  const finalState = await workflow.invoke({
+  const finalState = await runRepairWorkflow({
     cwd,
     logs: pipelineResult.output,
     maxAttempts,
-    attempts: 0,
-    success: false,
   });
 
   const result = {

@@ -5,7 +5,7 @@ import { run } from "./run";
 async function main() {
   try {
     const cwd = core.getInput("path") || process.cwd();
-    const maxAttempts = parseInt(core.getInput("max-attempts") || "3", 10);
+    const maxAttempts = Number(core.getInput("max-attempts") || "3");
     const token = core.getInput("github-token", { required: true });
     const baseBranch =
       core.getInput("base-branch") || github.context.ref.replace("refs/heads/", "") || "main";

@@ -4,7 +4,13 @@ import "@opspilot/config"; // loads .env before anything else
 import { Command } from "commander";
 import fs from "fs";
 import path from "path";
-import { orchestrate, orchestrateAndFix, detectFramework, detectPackageManager } from "@opspilot/core";
+import {
+  orchestrate,
+  orchestrateAndFix,
+  detectFramework,
+  detectPackageManager,
+  resolveMaxAttempts,
+} from "@opspilot/core";
 
 // dist/index.js sits one level below the package root, where package.json is always published
 const { version } = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf-8"));
@@ -61,7 +67,7 @@ program
   .action(async (opts) => {
     try {
       const cwd = path.resolve(opts.path);
-      const maxAttempts = parseInt(opts.maxAttempts, 10);
+      const maxAttempts = resolveMaxAttempts(Number(opts.maxAttempts));
       const dryRun: boolean = opts.dryRun;
       const framework = detectFramework(cwd);
       const packageManager = detectPackageManager(cwd);
