@@ -83,7 +83,9 @@ program
       const result = await orchestrateAndFix({ cwd, maxAttempts, dryRun });
 
       console.log("\n──────────────────────────────────────────────");
-      if (result.success) {
+      if (result.success && result.attempts === 0) {
+        console.log("✅ Nothing to fix — your project already passes its build, lint, and tests.");
+      } else if (result.success) {
         console.log(`✅ Build fixed after ${result.attempts} attempt(s)!`);
         console.log(`   Model:  ${result.modelUsed || "unknown"}`);
         if (result.promptTokens !== undefined && result.completionTokens !== undefined) {

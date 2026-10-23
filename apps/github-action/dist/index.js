@@ -111613,6 +111613,9 @@ async function openFixPullRequest(options) {
 async function run(options) {
   const { cwd, maxAttempts, octokit, repo, baseBranch, branchPrefix = "bugzero-fix" } = options;
   const result = await (0, import_core2.orchestrateAndFix)({ cwd, maxAttempts });
+  if (result.success && result.attempts === 0) {
+    return { fixed: false, alreadyPassing: true };
+  }
   if (!result.success || !result.appliedFix) {
     return { fixed: false, reason: result.error ?? "No fix was found." };
   }
@@ -111665,6 +111668,8 @@ async function main() {
     core.setOutput("pull-request-url", result.prUrl ?? "");
     if (result.fixed) {
       core.info(`\u2705 BugZero fixed the build and opened a pull request: ${result.prUrl}`);
+    } else if (result.alreadyPassing) {
+      core.info("\u2705 Nothing to fix \u2014 the project already passes its build, lint, and tests. No pull request opened.");
     } else {
       core.setFailed(`BugZero could not fix the build: ${result.reason}`);
     }

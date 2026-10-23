@@ -24,7 +24,7 @@ inputs:
 
 outputs:
   fixed:
-    description: "\"true\" if BugZero successfully fixed the build, \"false\" otherwise."
+    description: "\"true\" if BugZero fixed the build and opened a pull request, \"false\" otherwise (including when the project already passed and there was nothing to fix)."
   pull-request-url:
     description: "URL of the pull request BugZero opened, if any."
 

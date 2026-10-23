@@ -106,7 +106,7 @@ describe("run", () => {
     expect(octokit.rest.git.getRef).not.toHaveBeenCalled();
   });
 
-  it("does not open a pull request when the repair succeeds without an appliedFix", async () => {
+  it("reports alreadyPassing, not a failure, when the project had nothing to fix", async () => {
     mockOrchestrateAndFix.mockResolvedValueOnce({
       success: true,
       attempts: 0,
@@ -121,7 +121,29 @@ describe("run", () => {
       baseBranch: "main",
     });
 
+    expect(result).toEqual({ fixed: false, alreadyPassing: true });
+    expect(octokit.rest.pulls.create).not.toHaveBeenCalled();
+    expect(octokit.rest.git.getRef).not.toHaveBeenCalled();
+  });
+
+  it("still reports a failure when validation passes after attempts but no fix was recorded", async () => {
+    mockOrchestrateAndFix.mockResolvedValueOnce({
+      success: true,
+      attempts: 1,
+      finalOutput: "",
+    });
+
+    const result = await run({
+      cwd: tmpDir,
+      maxAttempts: 3,
+      octokit,
+      repo: { owner: "acme", repo: "widgets" },
+      baseBranch: "main",
+    });
+
     expect(result.fixed).toBe(false);
+    expect(result.alreadyPassing).toBeUndefined();
+    expect(result.reason).toBe("No fix was found.");
     expect(octokit.rest.pulls.create).not.toHaveBeenCalled();
   });
 });

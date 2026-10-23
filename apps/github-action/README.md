@@ -56,7 +56,7 @@ Also requires an `OPENROUTER_API_KEY` environment variable (see the root [README
 
 | Output | Description |
 |---|---|
-| `fixed` | `"true"` if BugZero fixed the build, `"false"` otherwise |
+| `fixed` | `"true"` if BugZero fixed the build and opened a PR, `"false"` otherwise. If the project already passes, the step succeeds with `"false"` and opens no PR. |
 | `pull-request-url` | URL of the opened pull request, if any |
 
 ## Development

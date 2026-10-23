@@ -14,6 +14,8 @@ export interface RunOptions {
 
 export interface RunResult {
   fixed: boolean;
+  /** True when the project already passed, so there was nothing to fix. */
+  alreadyPassing?: boolean;
   prUrl?: string;
   prNumber?: number;
   reason?: string;
@@ -24,6 +26,11 @@ export async function run(options: RunOptions): Promise<RunResult> {
   const { cwd, maxAttempts, octokit, repo, baseBranch, branchPrefix = "bugzero-fix" } = options;
 
   const result = await orchestrateAndFix({ cwd, maxAttempts });
+
+  // Zero attempts with success means validation passed before any fix was needed.
+  if (result.success && result.attempts === 0) {
+    return { fixed: false, alreadyPassing: true };
+  }
 
   if (!result.success || !result.appliedFix) {
     return { fixed: false, reason: result.error ?? "No fix was found." };

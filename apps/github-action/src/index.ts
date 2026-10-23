@@ -26,6 +26,8 @@ async function main() {
 
     if (result.fixed) {
       core.info(`✅ BugZero fixed the build and opened a pull request: ${result.prUrl}`);
+    } else if (result.alreadyPassing) {
+      core.info("✅ Nothing to fix — the project already passes its build, lint, and tests. No pull request opened.");
     } else {
       core.setFailed(`BugZero could not fix the build: ${result.reason}`);
     }
