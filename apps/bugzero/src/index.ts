@@ -11,6 +11,7 @@ import {
   detectPackageManager,
   resolveMaxAttempts,
 } from "@opspilot/core";
+import { buildRescueSummary } from "./summary";
 
 // dist/index.js sits one level below the package root, where package.json is always published
 const { version } = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf-8"));
@@ -83,32 +84,11 @@ program
       const result = await orchestrateAndFix({ cwd, maxAttempts, dryRun });
 
       console.log("\n──────────────────────────────────────────────");
-      if (result.success && result.attempts === 0) {
-        console.log("✅ Nothing to fix — your project already passes its build, lint, and tests.");
-      } else if (result.success) {
-        console.log(`✅ Build fixed after ${result.attempts} attempt(s)!`);
-        console.log(`   Model:  ${result.modelUsed || "unknown"}`);
-        if (result.promptTokens !== undefined && result.completionTokens !== undefined) {
-          console.log(`   Tokens: Prompt: ${result.promptTokens} | Completion: ${result.completionTokens} | Total: ${result.promptTokens + result.completionTokens}`);
-        }
-        if (result.appliedFix) {
-          const files = result.appliedFix.patches.map((p) => p.filePath).join(", ");
-          console.log(`   File${result.appliedFix.patches.length === 1 ? "" : "s"}:   ${files}`);
-          console.log(`   Reason: ${result.appliedFix.explanation}`);
-          console.log(`   Root cause: ${result.appliedFix.rootCause}`);
-        }
-      } else {
-        console.log(`❌ Could not fix build after ${result.attempts} attempt(s).`);
-        console.log(`   Model:  ${result.modelUsed || "unknown"}`);
-        if (result.promptTokens !== undefined && result.completionTokens !== undefined) {
-          console.log(`   Tokens: Prompt: ${result.promptTokens} | Completion: ${result.completionTokens} | Total: ${result.promptTokens + result.completionTokens}`);
-        }
-        if (result.error) console.log(`   ${result.error}`);
-        console.log(`\n👉 Full unresolved error logs have been listed in the generated report.`);
-      }
+      const summary = buildRescueSummary(result, { dryRun });
+      for (const line of summary.lines) console.log(line);
       console.log();
 
-      process.exit(result.success ? 0 : 1);
+      process.exit(summary.exitCode);
     } catch (error: any) {
       console.error(`\n❌ [BugZero] Execution failed: ${error.message || error}`);
       process.exit(1);

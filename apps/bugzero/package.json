@@ -1,6 +1,6 @@
 {
   "name": "bugzero",
-  "version": "0.0.39",
+  "version": "0.0.40",
   "description": "Autonomous AI-powered CLI and GitHub Action that detects build, lint, and test failures, generates multi-file patches, applies them atomically with fuzzy matching, and re-verifies until your project is green.",
   "license": "MIT",
   "author": "Saksham Agarwal (https://github.com/Saksham1800t)",
