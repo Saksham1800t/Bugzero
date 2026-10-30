@@ -100,7 +100,7 @@ bugzero rescue
 ### Safety
 
 - **Backups on every patch.** Each file BugZero modifies gets a `.opspilot.bak` copy of its original content first.
-- **Dry-run mode.** `bugzero rescue --dry-run` runs validation and error analysis, but makes no fix attempts and never modifies your source files (a report is still written). It exits with code 1 if it found failures and 0 if everything already passes, so you can use it as a check in scripts.
+- **Dry-run mode.** `bugzero rescue --dry-run` runs validation and error analysis, but makes no fix attempts and never modifies your source files (it still writes a report that diagnoses the failures it found). It exits with code 1 if it found failures and 0 if everything already passes, so you can use it as a check in scripts.
 - **Prompt size limits.** Very long error output and very large source files are shortened before being sent to the model (for logs, the start and end are kept), so a big failure can't exceed the model's context window or waste tokens.
 
 ### Project awareness

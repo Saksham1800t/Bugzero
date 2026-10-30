@@ -111248,6 +111248,51 @@ var require_dist12 = __commonJS({
     var import_fs3 = __toESM2(require("fs"));
     var import_path3 = __toESM2(require("path"));
     var import_url = require("url");
+    function buildDryRunPrompt(cwd, rawOutput) {
+      return `You are an expert software engineer assistant. BugZero ran in dry-run mode on the project located at "${cwd}": it ran the project's build/lint/test checks and found failures, but it intentionally attempted NO fixes and modified NO files.
+Below is the error output.
+Please analyze these logs and generate a professional, beautifully formatted Markdown report summarizing:
+1. **Diagnosis:** Clear explanation of what failed and why.
+2. **Root Cause:** The underlying issue in the code or config.
+3. **Suggested Fix:** Step-by-step instructions on what files need to be modified and what exact changes to make.
+
+Error Logs:
+${rawOutput}
+
+Generate the Markdown report directly. Do not wrap it in markdown block fences (\`\`\`markdown ... \`\`\`). Just write the markdown text directly.`;
+    }
+    function buildDryRunMetadata(response) {
+      const usage = response.usage ? `Prompt: **${response.usage.prompt_tokens}** | Completion: **${response.usage.completion_tokens}** | Total: **${response.usage.total_tokens}**` : "*N/A*";
+      return `
+
+---
+### \u{1F50D} BugZero Dry Run Metadata
+- **Mode:** Dry run (no fixes attempted, no files modified)
+- **AI Brain (Model) used for Diagnosis:** \`${response.model || "unknown"}\`
+- **Token Usage for Diagnosis:** ${usage}`;
+    }
+    function buildDryRunFallbackReport(params) {
+      const aiNote = params.aiError ? `
+*AI diagnosis was unavailable for this report: ${params.aiError}*
+` : "";
+      return `# \u{1F50D} BugZero Dry Run Report
+
+**Date:** ${(/* @__PURE__ */ new Date()).toLocaleString()}
+**Project Path:** \`${params.cwd}\`
+**Framework:** \`${params.framework}\`
+
+## \u{1F4CA} Summary
+- **Mode:** Dry run \u2014 no fixes were attempted and no files were modified
+- **Result:** \u274C Failures detected
+${aiNote}
+## \u274C Detected Errors & Logs
+\`\`\`text
+${params.rawOutput}
+\`\`\`
+
+Re-run without \`--dry-run\` to let BugZero attempt a fix.
+`;
+    }
     var DEFAULT_MAX_ATTEMPTS = 3;
     function resolveMaxAttempts(value) {
       const attempts = value ?? DEFAULT_MAX_ATTEMPTS;
@@ -111309,7 +111354,8 @@ var require_dist12 = __commonJS({
           attempts: 0,
           maxAttempts,
           error: "Dry-run: analysis complete, no files modified.",
-          rawOutput: pipelineResult.output
+          rawOutput: pipelineResult.output,
+          dryRun: true
         });
         return {
           success: false,
@@ -111446,7 +111492,20 @@ ${logs}
         }
       } else {
         const { success, attempts, maxAttempts, appliedFix, error, rawOutput, modelUsed, promptTokens, completionTokens } = data;
-        if (success && appliedFix) {
+        if (data.dryRun) {
+          console.log("[BugZero] Calling AI to diagnose the detected errors and write report...");
+          try {
+            const result = await provider.invoke(buildDryRunPrompt(cwd, rawOutput ?? ""), { cwd });
+            content = result.content + buildDryRunMetadata(result);
+          } catch (e) {
+            content = buildDryRunFallbackReport({
+              cwd,
+              framework: detectFramework(cwd),
+              rawOutput: rawOutput ?? "",
+              aiError: e.message
+            });
+          }
+        } else if (success && appliedFix) {
           console.log("[BugZero] Calling AI to write solution summary report...");
           const patchedFiles = appliedFix.patches.map((p) => p.filePath).join(", ");
           const prompt = `You are an expert software engineer assistant. An automated AI agent successfully resolved a build/lint/test failure in a project located at "${cwd}" after ${attempts} attempts by applying a patch to: ${patchedFiles}.

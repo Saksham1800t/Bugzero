@@ -5,6 +5,7 @@ import fs from "fs";
 import path from "path";
 import { pathToFileURL } from "url";
 import { detectFramework } from "./framework-detector";
+import { buildDryRunFallbackReport, buildDryRunMetadata, buildDryRunPrompt } from "./dry-run-report";
 import { resolveMaxAttempts } from "./options";
 import { assertNodeProject } from "./project-check";
 import { OpenRouterProvider } from "@opspilot/ai-provider";
@@ -81,7 +82,8 @@ export async function orchestrateAndFix(
       attempts: 0,
       maxAttempts,
       error: "Dry-run: analysis complete, no files modified.",
-      rawOutput: pipelineResult.output
+      rawOutput: pipelineResult.output,
+      dryRun: true,
     });
     return {
       success: false,
@@ -153,6 +155,8 @@ async function writeReport(
     maxAttempts?: number;
     appliedFix?: any;
     error?: string;
+    /** True when the run was a dry run, so the report describes analysis rather than a failed repair. */
+    dryRun?: boolean;
     build?: any;
     lint?: any;
     test?: any;
@@ -230,7 +234,20 @@ ${logs}
   } else {
     const { success, attempts, maxAttempts, appliedFix, error, rawOutput, modelUsed, promptTokens, completionTokens } = data;
     
-    if (success && appliedFix) {
+    if (data.dryRun) {
+      console.log("[BugZero] Calling AI to diagnose the detected errors and write report...");
+      try {
+        const result = await provider.invoke(buildDryRunPrompt(cwd, rawOutput ?? ""), { cwd });
+        content = result.content + buildDryRunMetadata(result);
+      } catch (e: any) {
+        content = buildDryRunFallbackReport({
+          cwd,
+          framework: detectFramework(cwd),
+          rawOutput: rawOutput ?? "",
+          aiError: e.message,
+        });
+      }
+    } else if (success && appliedFix) {
       console.log("[BugZero] Calling AI to write solution summary report...");
       const patchedFiles = appliedFix.patches.map((p: { filePath: string }) => p.filePath).join(", ");
       const prompt = `You are an expert software engineer assistant. An automated AI agent successfully resolved a build/lint/test failure in a project located at "${cwd}" after ${attempts} attempts by applying a patch to: ${patchedFiles}.
