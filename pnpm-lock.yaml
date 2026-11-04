@@ -51,6 +51,9 @@ importers:
       execa:
         specifier: ^7.2.0
         version: 7.2.0
+      tree-kill:
+        specifier: ^1.2.2
+        version: 1.2.2
     devDependencies:
       '@opspilot/agents':
         specifier: workspace:*
@@ -116,6 +119,9 @@ importers:
       execa:
         specifier: ^7.2.0
         version: 7.2.0
+      tree-kill:
+        specifier: ^1.2.2
+        version: 1.2.2
 
   packages/config:
     dependencies:

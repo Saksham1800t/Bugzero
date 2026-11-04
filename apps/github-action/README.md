@@ -47,6 +47,7 @@ Your dependencies must already be installed before this step runs — the Action
 |---|---|---|---|
 | `path` | No | `.` | Path to the project to analyze and fix |
 | `max-attempts` | No | `3` | Maximum AI fix attempts before giving up |
+| `timeout` | No | no limit | Stop any build, lint, or test command that runs longer than this many seconds — recommended in CI, so a hung command can't run until the job's own limit |
 | `base-branch` | No | current branch | Branch to open the fix PR against |
 | `github-token` | No | `${{ github.token }}` | Token used to create the branch and PR — needs `contents: write` and `pull-requests: write` |
 

@@ -66,8 +66,17 @@ describe("scripts", () => {
 
       const result = await runScript("build", tmpDir);
 
-      expect(mockRunCommand).toHaveBeenCalledWith("pnpm run build", tmpDir);
+      expect(mockRunCommand).toHaveBeenCalledWith("pnpm run build", tmpDir, undefined);
       expect(result).toEqual({ success: false, output: "boom" });
+    });
+
+    it("passes the timeout through to the command runner", async () => {
+      write("package.json", JSON.stringify({ scripts: { test: "vitest" } }));
+      mockRunCommand.mockResolvedValueOnce({ success: true, output: "ok" });
+
+      await runScript("test", tmpDir, { timeoutMs: 5000 });
+
+      expect(mockRunCommand).toHaveBeenCalledWith("npm run test", tmpDir, { timeoutMs: 5000 });
     });
   });
 });

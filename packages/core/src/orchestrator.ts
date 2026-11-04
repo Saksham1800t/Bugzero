@@ -6,7 +6,7 @@ import path from "path";
 import { pathToFileURL } from "url";
 import { detectFramework } from "./framework-detector";
 import { buildDryRunFallbackReport, buildDryRunMetadata, buildDryRunPrompt } from "./dry-run-report";
-import { resolveMaxAttempts } from "./options";
+import { resolveMaxAttempts, resolveTimeoutMs } from "./options";
 import { assertNodeProject } from "./project-check";
 import { OpenRouterProvider } from "@opspilot/ai-provider";
 
@@ -22,16 +22,19 @@ export interface OrchestrateOptions {
   maxAttempts?: number;
   /** When true, only analyse — never write files */
   dryRun?: boolean;
+  /** Stop any build/lint/test command that runs longer than this many seconds (default: no limit) */
+  timeoutSeconds?: number;
 }
 
 /** Run build, lint and tests — return raw results without touching files. */
 export async function orchestrate(options: OrchestrateOptions = {}) {
   const cwd = options.cwd ?? process.cwd();
   assertNodeProject(cwd);
+  const timeoutMs = resolveTimeoutMs(options.timeoutSeconds);
   const [build, lint, test] = await Promise.all([
-    runBuild(cwd),
-    runLint(cwd),
-    runTests(cwd),
+    runBuild(cwd, { timeoutMs }),
+    runLint(cwd, { timeoutMs }),
+    runTests(cwd, { timeoutMs }),
   ]);
 
   await writeReport(cwd, "hunt", {
@@ -55,10 +58,11 @@ export async function orchestrateAndFix(
   const cwd = options.cwd ?? process.cwd();
   assertNodeProject(cwd);
   const maxAttempts = resolveMaxAttempts(options.maxAttempts);
+  const timeoutMs = resolveTimeoutMs(options.timeoutSeconds);
 
   // ── Step 1: Initial validation run ──────────────────────────────────────
   console.log(`[BugZero] Running validation pipeline in: ${cwd}`);
-  const pipelineResult = await runValidationPipeline(cwd);
+  const pipelineResult = await runValidationPipeline(cwd, { timeoutMs });
 
   if (pipelineResult.success) {
     console.log("[BugZero] Validation already passing — nothing to fix.");
@@ -98,6 +102,7 @@ export async function orchestrateAndFix(
     cwd,
     logs: pipelineResult.output,
     maxAttempts,
+    timeoutMs,
   });
 
   const result = {

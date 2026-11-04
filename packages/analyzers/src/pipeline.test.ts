@@ -63,6 +63,35 @@ describe("runValidationPipeline", () => {
     expect(mockRunCommand).toHaveBeenCalledTimes(2);
   });
 
+  it("applies the timeout to every step it runs", async () => {
+    writeScripts({ build: "x", lint: "x", test: "x" });
+    mockRunCommand.mockResolvedValue({ success: true, output: "ok" });
+
+    await runValidationPipeline(tmpDir, { timeoutMs: 7000 });
+
+    expect(mockRunCommand.mock.calls.map((c) => c[2])).toEqual([
+      { timeoutMs: 7000 },
+      { timeoutMs: 7000 },
+      { timeoutMs: 7000 },
+    ]);
+  });
+
+  it("treats a timed-out step as a failure and reports its output", async () => {
+    writeScripts({ build: "x", test: "x" });
+    mockRunCommand.mockResolvedValueOnce({
+      success: false,
+      timedOut: true,
+      output: "partial\n\n[BugZero] Command timed out after 7s and was stopped: npm run build",
+    });
+
+    const result = await runValidationPipeline(tmpDir, { timeoutMs: 7000 });
+
+    expect(result.success).toBe(false);
+    expect(result.step).toBe("build");
+    expect(result.output).toContain("timed out after 7s");
+    expect(mockRunCommand).toHaveBeenCalledTimes(1);
+  });
+
   it("passes with a warning when the project defines none of the scripts", async () => {
     writeScripts({ start: "node ." });
 

@@ -10,11 +10,22 @@ import {
   detectFramework,
   detectPackageManager,
   resolveMaxAttempts,
+  resolveTimeoutMs,
 } from "@opspilot/core";
 import { buildRescueSummary } from "./summary";
 
 // dist/index.js sits one level below the package root, where package.json is always published
 const { version } = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf-8"));
+
+const TIMEOUT_DESCRIPTION = "Stop any build/lint/test command that runs longer than this many seconds";
+
+/** Parses --timeout up front so a bad value fails before any command runs. */
+function parseTimeout(raw: string | undefined): number | undefined {
+  if (raw === undefined) return undefined;
+  const seconds = Number(raw);
+  resolveTimeoutMs(seconds); // throws on anything that isn't a positive number
+  return seconds;
+}
 
 const program = new Command();
 
@@ -28,18 +39,22 @@ program
   .command("hunt")
   .description("Run build, lint, and tests — report issues without modifying files")
   .option("-p, --path <dir>", "Path to the target project", ".")
+  .option("-t, --timeout <seconds>", TIMEOUT_DESCRIPTION)
   .action(async (opts) => {
     try {
       const cwd = path.resolve(opts.path);
+      const timeoutSeconds = parseTimeout(opts.timeout);
       const framework = detectFramework(cwd);
       const packageManager = detectPackageManager(cwd);
 
       console.log(`\n🔍 BugZero — Analyzing project`);
       console.log(`   Path:      ${cwd}`);
       console.log(`   Framework: ${framework}`);
-      console.log(`   Package manager: ${packageManager}\n`);
+      console.log(`   Package manager: ${packageManager}`);
+      if (timeoutSeconds !== undefined) console.log(`   Timeout:   ${timeoutSeconds}s per command`);
+      console.log();
 
-      const { build, lint, test } = await orchestrate({ cwd });
+      const { build, lint, test } = await orchestrate({ cwd, timeoutSeconds });
 
       console.log("── Pipeline Summary ───────────────────────────");
       const label = (r: { success: boolean; skipped?: boolean }) =>
@@ -64,11 +79,13 @@ program
   .description("Detect build failures and automatically apply AI-generated fixes")
   .option("-p, --path <dir>", "Path to the target project", ".")
   .option("-n, --max-attempts <number>", "Maximum AI fix attempts", "3")
+  .option("-t, --timeout <seconds>", TIMEOUT_DESCRIPTION)
   .option("--dry-run", "Analyse only — print what would be fixed without writing files", false)
   .action(async (opts) => {
     try {
       const cwd = path.resolve(opts.path);
       const maxAttempts = resolveMaxAttempts(Number(opts.maxAttempts));
+      const timeoutSeconds = parseTimeout(opts.timeout);
       const dryRun: boolean = opts.dryRun;
       const framework = detectFramework(cwd);
       const packageManager = detectPackageManager(cwd);
@@ -78,10 +95,11 @@ program
       console.log(`   Framework:   ${framework}`);
       console.log(`   Package manager: ${packageManager}`);
       console.log(`   Max attempts: ${maxAttempts}`);
+      if (timeoutSeconds !== undefined) console.log(`   Timeout:     ${timeoutSeconds}s per command`);
       if (dryRun) console.log(`   Mode:        DRY RUN (no files will be modified)`);
       console.log();
 
-      const result = await orchestrateAndFix({ cwd, maxAttempts, dryRun });
+      const result = await orchestrateAndFix({ cwd, maxAttempts, dryRun, timeoutSeconds });
 
       console.log("\n──────────────────────────────────────────────");
       const summary = buildRescueSummary(result, { dryRun });

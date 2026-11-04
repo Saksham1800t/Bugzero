@@ -52,4 +52,9 @@ export const GraphState = Annotation.Root({
     reducer: (old, value) => old + value,
     default: () => 0,
   }),
+  /** Per-command timeout in milliseconds for validation steps (undefined = no limit) */
+  timeoutMs: Annotation<number | undefined>({
+    reducer: (_, value) => value,
+    default: () => undefined,
+  }),
 });

@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { detectPackageManager, getRunScriptCommand } from "./package-manager";
-import { runCommand, type CommandResult } from "./run-command";
+import { runCommand, type CommandResult, type RunCommandOptions } from "./run-command";
 
 /** Names of the scripts defined in the project's package.json (empty if it can't be read). */
 export function readScripts(cwd: string = process.cwd()): string[] {
@@ -21,9 +21,13 @@ export function readScripts(cwd: string = process.cwd()): string[] {
  * project doesn't define the script, the step is reported as skipped
  * rather than failed — a missing "lint" script isn't a lint failure.
  */
-export async function runScript(script: string, cwd?: string): Promise<CommandResult> {
+export async function runScript(
+  script: string,
+  cwd?: string,
+  options?: RunCommandOptions
+): Promise<CommandResult> {
   if (!readScripts(cwd).includes(script)) {
     return { success: true, output: "", skipped: true };
   }
-  return runCommand(getRunScriptCommand(detectPackageManager(cwd), script), cwd);
+  return runCommand(getRunScriptCommand(detectPackageManager(cwd), script), cwd, options);
 }

@@ -6,6 +6,8 @@ import { MinimalOctokit, openFixPullRequest, RepoRef } from "./open-pull-request
 export interface RunOptions {
   cwd: string;
   maxAttempts: number;
+  /** Stop any build/lint/test command that runs longer than this many seconds (default: no limit) */
+  timeoutSeconds?: number;
   octokit: MinimalOctokit;
   repo: RepoRef;
   baseBranch: string;
@@ -23,9 +25,9 @@ export interface RunResult {
 
 /** Runs BugZero's repair loop, then opens a fix PR if it succeeded. */
 export async function run(options: RunOptions): Promise<RunResult> {
-  const { cwd, maxAttempts, octokit, repo, baseBranch, branchPrefix = "bugzero-fix" } = options;
+  const { cwd, maxAttempts, timeoutSeconds, octokit, repo, baseBranch, branchPrefix = "bugzero-fix" } = options;
 
-  const result = await orchestrateAndFix({ cwd, maxAttempts });
+  const result = await orchestrateAndFix({ cwd, maxAttempts, timeoutSeconds });
 
   // Zero attempts with success means validation passed before any fix was needed.
   if (result.success && result.attempts === 0) {

@@ -93,7 +93,7 @@ async function verifyNode(state: typeof GraphState.State) {
   }
 
   console.log("[BugZero] Re-running validation pipeline to verify fix…");
-  const result = await runValidationPipeline(state.cwd);
+  const result = await runValidationPipeline(state.cwd, { timeoutMs: state.timeoutMs });
 
   if (result.success) {
     console.log("[BugZero] ✅ Validation succeeded!");
@@ -135,6 +135,8 @@ export interface RepairInput {
   cwd: string;
   logs: string;
   maxAttempts: number;
+  /** Per-command timeout in milliseconds for each validation step (default: no limit) */
+  timeoutMs?: number;
 }
 
 /**

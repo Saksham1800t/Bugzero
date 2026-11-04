@@ -84,6 +84,21 @@ describe("run", () => {
     );
   });
 
+  it("forwards the timeout to the repair run", async () => {
+    mockOrchestrateAndFix.mockResolvedValueOnce({ success: true, attempts: 0, finalOutput: "" });
+
+    await run({
+      cwd: tmpDir,
+      maxAttempts: 3,
+      timeoutSeconds: 120,
+      octokit,
+      repo: { owner: "acme", repo: "widgets" },
+      baseBranch: "main",
+    });
+
+    expect(mockOrchestrateAndFix).toHaveBeenCalledWith({ cwd: tmpDir, maxAttempts: 3, timeoutSeconds: 120 });
+  });
+
   it("does not open a pull request when the repair fails", async () => {
     mockOrchestrateAndFix.mockResolvedValueOnce({
       success: false,

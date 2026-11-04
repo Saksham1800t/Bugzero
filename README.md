@@ -102,6 +102,7 @@ bugzero rescue
 - **Backups on every patch.** Each file BugZero modifies gets a `.opspilot.bak` copy of its original content first.
 - **Dry-run mode.** `bugzero rescue --dry-run` runs validation and error analysis, but makes no fix attempts and never modifies your source files (it still writes a report that diagnoses the failures it found). It exits with code 1 if it found failures and 0 if everything already passes, so you can use it as a check in scripts.
 - **Prompt size limits.** Very long error output and very large source files are shortened before being sent to the model (for logs, the start and end are kept), so a big failure can't exceed the model's context window or waste tokens.
+- **Command timeouts.** `--timeout <seconds>` (available on both `hunt` and `rescue`) stops any build, lint, or test command that runs longer than that. It kills the whole process tree rather than just the shell, so a hung test run cannot linger in the background, and the step is reported as failed along with whatever output it produced. Without it, a command that hangs will hang BugZero too, so it is worth setting in CI.
 
 ### Project awareness
 
@@ -190,7 +191,7 @@ OPENROUTER_API_KEY=your_openrouter_api_key_here
 ## Commands
 
 ### `bugzero hunt`
-Run build, lint, and test checks. Reports all failures without modifying any files.
+Run build, lint, and test checks. Reports all failures without modifying any files. Accepts `--timeout <seconds>`, like `rescue`.
 
 ```bash
 bugzero hunt --path /path/to/your/project
@@ -210,6 +211,7 @@ bugzero rescue --path /path/to/your/project
 |---|---|---|---|
 | `--path <dir>` | `-p` | `.` | Path to the target project |
 | `--max-attempts <n>` | `-n` | `3` | Maximum AI fix iterations before giving up |
+| `--timeout <seconds>` | `-t` | none | Stop any build, lint, or test command that runs longer than this many seconds |
 | `--dry-run` | | `false` | Analyze only — no files will be written |
 
 </details>

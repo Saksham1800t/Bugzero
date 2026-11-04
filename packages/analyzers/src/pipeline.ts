@@ -1,5 +1,6 @@
 import { runBuild } from "./build";
 import { runLint } from "./lint";
+import type { RunCommandOptions } from "./run-command";
 import { readScripts } from "./scripts";
 import { runTests } from "./test";
 
@@ -17,9 +18,13 @@ const STEPS = [
 
 /**
  * Runs the project's build, lint, and test scripts in order, stopping at the
- * first failure. Steps the project doesn't define a script for are skipped.
+ * first failure. Steps the project doesn't define a script for are skipped,
+ * and a step that exceeds `options.timeoutMs` is stopped and counted as failed.
  */
-export async function runValidationPipeline(cwd?: string): Promise<PipelineResult> {
+export async function runValidationPipeline(
+  cwd?: string,
+  options?: RunCommandOptions
+): Promise<PipelineResult> {
   const targetCwd = cwd ?? process.cwd();
   const scripts = readScripts(targetCwd);
 
@@ -33,7 +38,7 @@ export async function runValidationPipeline(cwd?: string): Promise<PipelineResul
 
     ranAnyStep = true;
     console.log(`[BugZero] Running ${label}...`);
-    const result = await run(targetCwd);
+    const result = await run(targetCwd, options);
     if (!result.success) {
       return { success: false, step, output: result.output };
     }

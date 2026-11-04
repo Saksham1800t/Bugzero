@@ -14,6 +14,9 @@ inputs:
     description: "Maximum AI fix attempts before giving up."
     required: false
     default: "3"
+  timeout:
+    description: "Stop any build, lint, or test command that runs longer than this many seconds, so a hung command can't run until the job's own limit. Defaults to no limit."
+    required: false
   base-branch:
     description: "Branch to open the fix pull request against. Defaults to the branch the workflow is running on."
     required: false

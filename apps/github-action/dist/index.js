@@ -23935,6 +23935,116 @@ var require_github = __commonJS({
   }
 });
 
+// ../../node_modules/.pnpm/tree-kill@1.2.2/node_modules/tree-kill/index.js
+var require_tree_kill = __commonJS({
+  "../../node_modules/.pnpm/tree-kill@1.2.2/node_modules/tree-kill/index.js"(exports2, module2) {
+    "use strict";
+    var childProcess2 = require("child_process");
+    var spawn = childProcess2.spawn;
+    var exec = childProcess2.exec;
+    module2.exports = function(pid, signal, callback) {
+      if (typeof signal === "function" && callback === void 0) {
+        callback = signal;
+        signal = void 0;
+      }
+      pid = parseInt(pid);
+      if (Number.isNaN(pid)) {
+        if (callback) {
+          return callback(new Error("pid must be a number"));
+        } else {
+          throw new Error("pid must be a number");
+        }
+      }
+      var tree = {};
+      var pidsToProcess = {};
+      tree[pid] = [];
+      pidsToProcess[pid] = 1;
+      switch (process.platform) {
+        case "win32":
+          exec("taskkill /pid " + pid + " /T /F", callback);
+          break;
+        case "darwin":
+          buildProcessTree(pid, tree, pidsToProcess, function(parentPid) {
+            return spawn("pgrep", ["-P", parentPid]);
+          }, function() {
+            killAll(tree, signal, callback);
+          });
+          break;
+        // case 'sunos':
+        //     buildProcessTreeSunOS(pid, tree, pidsToProcess, function () {
+        //         killAll(tree, signal, callback);
+        //     });
+        //     break;
+        default:
+          buildProcessTree(pid, tree, pidsToProcess, function(parentPid) {
+            return spawn("ps", ["-o", "pid", "--no-headers", "--ppid", parentPid]);
+          }, function() {
+            killAll(tree, signal, callback);
+          });
+          break;
+      }
+    };
+    function killAll(tree, signal, callback) {
+      var killed = {};
+      try {
+        Object.keys(tree).forEach(function(pid) {
+          tree[pid].forEach(function(pidpid) {
+            if (!killed[pidpid]) {
+              killPid(pidpid, signal);
+              killed[pidpid] = 1;
+            }
+          });
+          if (!killed[pid]) {
+            killPid(pid, signal);
+            killed[pid] = 1;
+          }
+        });
+      } catch (err) {
+        if (callback) {
+          return callback(err);
+        } else {
+          throw err;
+        }
+      }
+      if (callback) {
+        return callback();
+      }
+    }
+    function killPid(pid, signal) {
+      try {
+        process.kill(parseInt(pid, 10), signal);
+      } catch (err) {
+        if (err.code !== "ESRCH") throw err;
+      }
+    }
+    function buildProcessTree(parentPid, tree, pidsToProcess, spawnChildProcessesList, cb) {
+      var ps = spawnChildProcessesList(parentPid);
+      var allData = "";
+      ps.stdout.on("data", function(data) {
+        var data = data.toString("ascii");
+        allData += data;
+      });
+      var onClose = function(code) {
+        delete pidsToProcess[parentPid];
+        if (code != 0) {
+          if (Object.keys(pidsToProcess).length == 0) {
+            cb();
+          }
+          return;
+        }
+        allData.match(/\d+/g).forEach(function(pid) {
+          pid = parseInt(pid, 10);
+          tree[parentPid].push(pid);
+          tree[pid] = [];
+          pidsToProcess[pid] = 1;
+          buildProcessTree(pid, tree, pidsToProcess, spawnChildProcessesList, cb);
+        });
+      };
+      ps.on("close", onClose);
+    }
+  }
+});
+
 // ../../node_modules/.pnpm/isexe@2.0.0/node_modules/isexe/windows.js
 var require_windows = __commonJS({
   "../../node_modules/.pnpm/isexe@2.0.0/node_modules/isexe/windows.js"(exports2, module2) {
@@ -26151,9 +26261,9 @@ var require_dist = __commonJS({
     });
     module2.exports = __toCommonJS2(index_exports);
     var import_fs2 = __toESM2(require("fs"));
-    var import_path2 = __toESM2(require("path"));
-    var import_fs3 = __toESM2(require("fs"));
     var import_path3 = __toESM2(require("path"));
+    var import_fs3 = __toESM2(require("fs"));
+    var import_path2 = __toESM2(require("path"));
     var VALID_MANAGERS = ["npm", "pnpm", "yarn", "bun"];
     var LOCKFILE_MANAGERS = [
       { file: "pnpm-workspace.yaml", manager: "pnpm" },
@@ -26165,7 +26275,7 @@ var require_dist = __commonJS({
     ];
     function detectPackageManager2(cwd = process.cwd()) {
       try {
-        const pkgPath = import_path3.default.join(cwd, "package.json");
+        const pkgPath = import_path2.default.join(cwd, "package.json");
         if (import_fs3.default.existsSync(pkgPath)) {
           const pkg = JSON.parse(import_fs3.default.readFileSync(pkgPath, "utf-8"));
           if (typeof pkg.packageManager === "string") {
@@ -26178,39 +26288,76 @@ var require_dist = __commonJS({
       } catch {
       }
       for (const { file, manager } of LOCKFILE_MANAGERS) {
-        if (import_fs3.default.existsSync(import_path3.default.join(cwd, file))) return manager;
+        if (import_fs3.default.existsSync(import_path2.default.join(cwd, file))) return manager;
       }
       return "npm";
     }
     function getRunScriptCommand(manager, script) {
       return `${manager} run ${script}`;
     }
-    async function runCommand(command, cwd) {
+    var import_child_process = require("child_process");
+    var import_path22 = __toESM2(require("path"));
+    var import_tree_kill = __toESM2(require_tree_kill());
+    function killProcessTree(pid) {
+      if (process.platform === "win32") {
+        const systemRoot = process.env.SystemRoot ?? process.env.windir ?? "C:\\Windows";
+        const taskkill = import_path22.default.join(systemRoot, "System32", "taskkill.exe");
+        (0, import_child_process.spawnSync)(taskkill, ["/pid", String(pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
+        return;
+      }
+      (0, import_tree_kill.default)(pid, "SIGKILL");
+    }
+    var KILL_GRACE_MS = 5e3;
+    async function runCommand(command, cwd, options = {}) {
       const { execa: execa2 } = await Promise.resolve().then(() => (init_execa(), execa_exports));
-      try {
-        const result = await execa2(command, {
-          shell: true,
-          cwd: cwd ?? process.cwd(),
-          all: true,
-          env: {
-            ...process.env,
-            CI: "true"
-          }
-        });
-        return {
-          success: true,
-          output: result.all ?? result.stdout
-        };
-      } catch (err) {
+      const subprocess = execa2(command, {
+        shell: true,
+        cwd: cwd ?? process.cwd(),
+        all: true,
+        env: {
+          ...process.env,
+          CI: "true"
+        }
+      });
+      const timedOutResult = (output, confirmedStopped) => {
+        const seconds = options.timeoutMs / 1e3;
+        const note = confirmedStopped ? "and was stopped" : "and could not be confirmed stopped";
         return {
           success: false,
-          output: err.all ?? err.stderr ?? err.stdout ?? err.message
+          timedOut: true,
+          output: `${output}
+
+[BugZero] Command timed out after ${seconds}s ${note}: ${command}`
         };
+      };
+      let timedOut = false;
+      let timer;
+      let graceTimer;
+      const gaveUp = new Promise((resolve) => {
+        if (options.timeoutMs === void 0) return;
+        timer = setTimeout(() => {
+          timedOut = true;
+          if (subprocess.pid !== void 0) killProcessTree(subprocess.pid);
+          graceTimer = setTimeout(() => resolve(timedOutResult("", false)), KILL_GRACE_MS);
+        }, options.timeoutMs);
+      });
+      const finished = subprocess.then(
+        (result) => ({ success: true, output: result.all ?? result.stdout }),
+        (err) => {
+          const output = err.all ?? err.stderr ?? err.stdout ?? err.message;
+          return timedOut ? timedOutResult(output, true) : { success: false, output };
+        }
+      );
+      try {
+        return await Promise.race([finished, gaveUp]);
+      } finally {
+        clearTimeout(timer);
+        clearTimeout(graceTimer);
       }
     }
     function readScripts(cwd = process.cwd()) {
       try {
-        const pkgPath = import_path2.default.join(cwd, "package.json");
+        const pkgPath = import_path3.default.join(cwd, "package.json");
         if (!import_fs2.default.existsSync(pkgPath)) return [];
         const pkg = JSON.parse(import_fs2.default.readFileSync(pkgPath, "utf-8"));
         if (typeof pkg.scripts !== "object" || pkg.scripts === null) return [];
@@ -26219,15 +26366,15 @@ var require_dist = __commonJS({
         return [];
       }
     }
-    async function runScript(script, cwd) {
+    async function runScript(script, cwd, options) {
       if (!readScripts(cwd).includes(script)) {
         return { success: true, output: "", skipped: true };
       }
-      return runCommand(getRunScriptCommand(detectPackageManager2(cwd), script), cwd);
+      return runCommand(getRunScriptCommand(detectPackageManager2(cwd), script), cwd, options);
     }
-    var runBuild = (cwd) => runScript("build", cwd);
-    var runLint = (cwd) => runScript("lint", cwd);
-    var runTests = (cwd) => runScript("test", cwd);
+    var runBuild = (cwd, options) => runScript("build", cwd, options);
+    var runLint = (cwd, options) => runScript("lint", cwd, options);
+    var runTests = (cwd, options) => runScript("test", cwd, options);
     var TS_ERROR_RE = /^(.+)\((\d+),(\d+)\):\s+error\s+TS\d+:\s+(.+)$/gm;
     var ESLINT_ERROR_RE = /^\s+(\d+):(\d+)\s+error\s+(.+)$/gm;
     var JEST_FAIL_RE = /● (.+)/g;
@@ -26282,7 +26429,7 @@ var require_dist = __commonJS({
       { step: "lint", label: "lint", run: runLint },
       { step: "test", label: "tests", run: runTests }
     ];
-    async function runValidationPipeline(cwd) {
+    async function runValidationPipeline(cwd, options) {
       const targetCwd = cwd ?? process.cwd();
       const scripts = readScripts(targetCwd);
       let ranAnyStep = false;
@@ -26293,7 +26440,7 @@ var require_dist = __commonJS({
         }
         ranAnyStep = true;
         console.log(`[BugZero] Running ${label}...`);
-        const result = await run2(targetCwd);
+        const result = await run2(targetCwd, options);
         if (!result.success) {
           return { success: false, step, output: result.output };
         }
@@ -111064,6 +111211,11 @@ var require_dist11 = __commonJS({
       completionTokens: (0, import_langgraph.Annotation)({
         reducer: (old, value) => old + value,
         default: () => 0
+      }),
+      /** Per-command timeout in milliseconds for validation steps (undefined = no limit) */
+      timeoutMs: (0, import_langgraph.Annotation)({
+        reducer: (_, value) => value,
+        default: () => void 0
       })
     });
     var import_ai_provider = require_dist8();
@@ -111144,7 +111296,7 @@ Any other files from that same suggestion were rolled back to keep the change at
         };
       }
       console.log("[BugZero] Re-running validation pipeline to verify fix\u2026");
-      const result = await (0, import_analyzers.runValidationPipeline)(state.cwd);
+      const result = await (0, import_analyzers.runValidationPipeline)(state.cwd, { timeoutMs: state.timeoutMs });
       if (result.success) {
         console.log("[BugZero] \u2705 Validation succeeded!");
       } else {
@@ -111213,7 +111365,8 @@ var require_dist12 = __commonJS({
       detectPackageManager: () => import_analyzers2.detectPackageManager,
       orchestrate: () => orchestrate,
       orchestrateAndFix: () => orchestrateAndFix2,
-      resolveMaxAttempts: () => resolveMaxAttempts
+      resolveMaxAttempts: () => resolveMaxAttempts,
+      resolveTimeoutMs: () => resolveTimeoutMs
     });
     module2.exports = __toCommonJS2(index_exports);
     var import_fs2 = __toESM2(require("fs"));
@@ -111294,6 +111447,13 @@ Re-run without \`--dry-run\` to let BugZero attempt a fix.
 `;
     }
     var DEFAULT_MAX_ATTEMPTS = 3;
+    function resolveTimeoutMs(seconds) {
+      if (seconds === void 0) return void 0;
+      if (!Number.isFinite(seconds) || seconds <= 0) {
+        throw new Error(`--timeout must be a positive number of seconds (received ${seconds}).`);
+      }
+      return Math.round(seconds * 1e3);
+    }
     function resolveMaxAttempts(value) {
       const attempts = value ?? DEFAULT_MAX_ATTEMPTS;
       if (!Number.isInteger(attempts) || attempts < 1) {
@@ -111316,10 +111476,11 @@ Re-run without \`--dry-run\` to let BugZero attempt a fix.
     async function orchestrate(options = {}) {
       const cwd = options.cwd ?? process.cwd();
       assertNodeProject(cwd);
+      const timeoutMs = resolveTimeoutMs(options.timeoutSeconds);
       const [build, lint, test] = await Promise.all([
-        (0, import_analyzers.runBuild)(cwd),
-        (0, import_analyzers.runLint)(cwd),
-        (0, import_analyzers.runTests)(cwd)
+        (0, import_analyzers.runBuild)(cwd, { timeoutMs }),
+        (0, import_analyzers.runLint)(cwd, { timeoutMs }),
+        (0, import_analyzers.runTests)(cwd, { timeoutMs })
       ]);
       await writeReport(cwd, "hunt", {
         success: build.success && lint.success && test.success,
@@ -111333,8 +111494,9 @@ Re-run without \`--dry-run\` to let BugZero attempt a fix.
       const cwd = options.cwd ?? process.cwd();
       assertNodeProject(cwd);
       const maxAttempts = resolveMaxAttempts(options.maxAttempts);
+      const timeoutMs = resolveTimeoutMs(options.timeoutSeconds);
       console.log(`[BugZero] Running validation pipeline in: ${cwd}`);
-      const pipelineResult = await (0, import_analyzers.runValidationPipeline)(cwd);
+      const pipelineResult = await (0, import_analyzers.runValidationPipeline)(cwd, { timeoutMs });
       if (pipelineResult.success) {
         console.log("[BugZero] Validation already passing \u2014 nothing to fix.");
         await writeReport(cwd, "rescue", {
@@ -111367,7 +111529,8 @@ Re-run without \`--dry-run\` to let BugZero attempt a fix.
       const finalState = await (0, import_agents.runRepairWorkflow)({
         cwd,
         logs: pipelineResult.output,
-        maxAttempts
+        maxAttempts,
+        timeoutMs
       });
       const result = {
         success: finalState.success,
@@ -111670,8 +111833,8 @@ async function openFixPullRequest(options) {
 
 // src/run.ts
 async function run(options) {
-  const { cwd, maxAttempts, octokit, repo, baseBranch, branchPrefix = "bugzero-fix" } = options;
-  const result = await (0, import_core2.orchestrateAndFix)({ cwd, maxAttempts });
+  const { cwd, maxAttempts, timeoutSeconds, octokit, repo, baseBranch, branchPrefix = "bugzero-fix" } = options;
+  const result = await (0, import_core2.orchestrateAndFix)({ cwd, maxAttempts, timeoutSeconds });
   if (result.success && result.attempts === 0) {
     return { fixed: false, alreadyPassing: true };
   }
@@ -111712,6 +111875,8 @@ async function main() {
   try {
     const cwd = core.getInput("path") || process.cwd();
     const maxAttempts = Number(core.getInput("max-attempts") || "3");
+    const timeoutInput = core.getInput("timeout");
+    const timeoutSeconds = timeoutInput ? Number(timeoutInput) : void 0;
     const token = core.getInput("github-token", { required: true });
     const baseBranch = core.getInput("base-branch") || github.context.ref.replace("refs/heads/", "") || "main";
     const octokit = github.getOctokit(token);
@@ -111719,6 +111884,7 @@ async function main() {
     const result = await run({
       cwd,
       maxAttempts,
+      timeoutSeconds,
       octokit,
       repo: { owner, repo },
       baseBranch

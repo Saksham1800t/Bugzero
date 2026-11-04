@@ -6,6 +6,8 @@ async function main() {
   try {
     const cwd = core.getInput("path") || process.cwd();
     const maxAttempts = Number(core.getInput("max-attempts") || "3");
+    const timeoutInput = core.getInput("timeout");
+    const timeoutSeconds = timeoutInput ? Number(timeoutInput) : undefined;
     const token = core.getInput("github-token", { required: true });
     const baseBranch =
       core.getInput("base-branch") || github.context.ref.replace("refs/heads/", "") || "main";
@@ -16,6 +18,7 @@ async function main() {
     const result = await run({
       cwd,
       maxAttempts,
+      timeoutSeconds,
       octokit,
       repo: { owner, repo },
       baseBranch,

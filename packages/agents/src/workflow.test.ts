@@ -81,7 +81,19 @@ describe("bugzero repair workflow", () => {
     expect(finalState.completionTokens).toBe(50);
 
     expect(mockApplyPatches).toHaveBeenCalledWith("/project", validFix.patches);
-    expect(mockRunValidationPipeline).toHaveBeenCalledWith("/project");
+    expect(mockRunValidationPipeline).toHaveBeenCalledWith("/project", { timeoutMs: undefined });
+  });
+
+  it("applies the configured timeout to each verification run", async () => {
+    mockInvoke.mockResolvedValue(aiResponse(JSON.stringify(validFix)));
+    mockApplyPatches.mockReturnValue({ success: true, applied: [appliedPatch("src/index.ts")] });
+    mockRunValidationPipeline.mockResolvedValue({ success: false, step: "build", output: "still broken" });
+
+    await runRepairWorkflow({ cwd: "/project", logs: "boom", maxAttempts: 2, timeoutMs: 45_000 });
+
+    expect(mockRunValidationPipeline).toHaveBeenCalledTimes(2);
+    expect(mockRunValidationPipeline).toHaveBeenNthCalledWith(1, "/project", { timeoutMs: 45_000 });
+    expect(mockRunValidationPipeline).toHaveBeenNthCalledWith(2, "/project", { timeoutMs: 45_000 });
   });
 
   it("applies patches to multiple files atomically in a single attempt", async () => {
