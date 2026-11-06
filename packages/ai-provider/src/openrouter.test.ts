@@ -117,6 +117,24 @@ describe("OpenRouterProvider", () => {
     );
   });
 
+  it("diagnoses a context-length error instead of blaming credits", async () => {
+    process.env.OPENROUTER_API_KEY = "test-key";
+    mockPost.mockRejectedValueOnce({
+      message: "Request failed with status code 400",
+      response: {
+        status: 400,
+        data: { error: { message: "This model's maximum context length is 8192 tokens. However, you requested 12000 tokens." } },
+      },
+    });
+
+    const provider = new OpenRouterProvider();
+    await expect(provider.invoke("fix this", { cwd: tmpDir })).rejects.toThrow("OpenRouter API failed:");
+
+    const printed = consoleErrorSpy.mock.calls.map((call) => call.join(" ")).join("\n");
+    expect(printed).toContain("context window");
+    expect(printed).not.toContain("credit");
+  });
+
   it("falls back to the raw error message when there is no response payload", async () => {
     process.env.OPENROUTER_API_KEY = "test-key";
     mockPost.mockRejectedValueOnce(new Error("Network timeout"));

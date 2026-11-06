@@ -1,6 +1,7 @@
 import axios from "axios";
 import fs from "fs";
 import path from "path";
+import { getErrorHints } from "./error-hints";
 import { AIProvider, InvokeResult } from "./provider";
 
 /** Read the selected model from .bugzerorc in the target project directory */
@@ -70,19 +71,9 @@ export class OpenRouterProvider implements AIProvider {
       }
 
       console.error(`\n❌ [BugZero] OpenRouter API Error: ${msg}`);
-      if (error.response?.status === 401) {
-        console.error(`👉 Please check if your OPENROUTER_API_KEY is correct and active.`);
-      } else if (error.response?.status === 429 || error.response?.status === 402 || /credit/i.test(msg) || /token/i.test(msg)) {
-        console.error(`\n👉 You have insufficient OpenRouter credits (or too low balance) for the selected model.`);
-        console.error(`👉 We suggest using the 'bugzero vibe' command to change to a FREE model:`);
-        console.error(`   1. Run the command: npx bugzero@latest vibe (or bugzero vibe)`);
-        console.error(`   2. Select "Custom Model" and enter one of these free model IDs:`);
-        console.error(`      - google/gemma-2-9b-it:free`);
-        console.error(`      - meta-llama/llama-3-8b-instruct:free`);
-        console.error(`      - mistralai/mistral-7b-instruct:free`);
-        console.error(`      - microsoft/phi-3-medium-128k-instruct:free`);
-        console.error(`      - nvidia/llama-3.1-nemotron-70b-instruct:free\n`);
-      }
+      const hints = getErrorHints({ status: error.response?.status, message: msg, model });
+      for (const line of hints) console.error(line);
+      if (hints.length > 0) console.error();
 
       throw new Error(`OpenRouter API failed: ${msg}`);
     }

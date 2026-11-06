@@ -110571,12 +110571,47 @@ var require_dist8 = __commonJS({
     var __toCommonJS2 = (mod) => __copyProps2(__defProp2({}, "__esModule", { value: true }), mod);
     var index_exports = {};
     __export2(index_exports, {
-      OpenRouterProvider: () => OpenRouterProvider
+      OpenRouterProvider: () => OpenRouterProvider,
+      getErrorHints: () => getErrorHints
     });
     module2.exports = __toCommonJS2(index_exports);
     var import_axios = __toESM2(require_axios());
     var import_fs2 = __toESM2(require("fs"));
     var import_path2 = __toESM2(require("path"));
+    var CREDITS_PATTERN = /insufficient credits|credit balance|add more credits|requires more credits|token_limit_exceeded/i;
+    var CONTEXT_PATTERN = /context length|context window|maximum context|context_length_exceeded|string_too_long|too many tokens|reduce the length/i;
+    var MODEL_PATTERN = /not a valid model|no endpoints found|model.{0,40}(not found|does not exist|unavailable)/i;
+    function getErrorHints({ status, message, model }) {
+      if (status === 401) {
+        return ["\u{1F449} Please check if your OPENROUTER_API_KEY is correct and active."];
+      }
+      if (status === 402 || CREDITS_PATTERN.test(message)) {
+        return [
+          "\u{1F449} Your OpenRouter credit balance is too low for this request.",
+          "   Add credits at https://openrouter.ai/settings/credits, or run 'bugzero vibe' to switch to a cheaper model",
+          "   (models that cost nothing are listed at https://openrouter.ai/models?max_price=0)."
+        ];
+      }
+      if (status === 429) {
+        return [
+          "\u{1F449} OpenRouter is rate limiting these requests. Wait a moment and try again.",
+          "   Free models have stricter limits; run 'bugzero vibe' to switch models, or add credits to raise them."
+        ];
+      }
+      if (CONTEXT_PATTERN.test(message)) {
+        return [
+          `\u{1F449} The prompt was too large for the context window of "${model}".`,
+          "   Run 'bugzero vibe' to pick a model with a larger context window, or try again on a smaller failing scope."
+        ];
+      }
+      if (status === 404 || MODEL_PATTERN.test(message)) {
+        return [
+          `\u{1F449} The model "${model}" isn't available on OpenRouter (it wasn't found, or no provider currently serves it).`,
+          "   Run 'bugzero vibe' to choose a different model."
+        ];
+      }
+      return [];
+    }
     function resolveModel(cwd) {
       try {
         const configPath = import_path2.default.resolve(cwd ?? process.cwd(), ".bugzerorc");
@@ -110639,21 +110674,9 @@ var require_dist8 = __commonJS({
           }
           console.error(`
 \u274C [BugZero] OpenRouter API Error: ${msg}`);
-          if (error.response?.status === 401) {
-            console.error(`\u{1F449} Please check if your OPENROUTER_API_KEY is correct and active.`);
-          } else if (error.response?.status === 429 || error.response?.status === 402 || /credit/i.test(msg) || /token/i.test(msg)) {
-            console.error(`
-\u{1F449} You have insufficient OpenRouter credits (or too low balance) for the selected model.`);
-            console.error(`\u{1F449} We suggest using the 'bugzero vibe' command to change to a FREE model:`);
-            console.error(`   1. Run the command: npx bugzero@latest vibe (or bugzero vibe)`);
-            console.error(`   2. Select "Custom Model" and enter one of these free model IDs:`);
-            console.error(`      - google/gemma-2-9b-it:free`);
-            console.error(`      - meta-llama/llama-3-8b-instruct:free`);
-            console.error(`      - mistralai/mistral-7b-instruct:free`);
-            console.error(`      - microsoft/phi-3-medium-128k-instruct:free`);
-            console.error(`      - nvidia/llama-3.1-nemotron-70b-instruct:free
-`);
-          }
+          const hints = getErrorHints({ status: error.response?.status, message: msg, model });
+          for (const line of hints) console.error(line);
+          if (hints.length > 0) console.error();
           throw new Error(`OpenRouter API failed: ${msg}`);
         }
       }

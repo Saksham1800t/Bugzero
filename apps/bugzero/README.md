@@ -269,8 +269,10 @@ BugZero provides clear, actionable output for common failure modes:
 | Error | Message |
 |---|---|
 | Invalid API key (401) | Prompts you to check your `OPENROUTER_API_KEY` |
-| Rate limit exceeded (429) | Prompts you to check your OpenRouter credit balance |
-| Model not found | Displays the invalid model ID and suggests running `bugzero vibe` |
+| Insufficient credits (402) | Says your OpenRouter balance is too low, links to the credits page, and suggests switching to a cheaper or free model with `bugzero vibe` |
+| Rate limit exceeded (429) | Says OpenRouter is rate limiting and suggests waiting, switching models, or adding credits |
+| Prompt too large for the model | Says the prompt exceeded the model's context window and suggests a larger-context model with `bugzero vibe` |
+| Model not found | Names the unavailable model ID and suggests running `bugzero vibe` |
 | Patch not applied | Reports exact mismatch between AI suggestion and file content, after exhausting exact, whitespace, and fuzzy matching |
 | Max attempts reached | Exits cleanly with the last error log for manual review |
 
