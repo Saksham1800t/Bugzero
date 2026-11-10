@@ -11,7 +11,9 @@ import {
   detectPackageManager,
   resolveMaxAttempts,
   resolveTimeoutMs,
+  REPORT_FILENAME,
 } from "@opspilot/core";
+import { buildErrorJson, buildHuntJson, buildRescueJson } from "./json-output";
 import { buildRescueSummary } from "./summary";
 
 // dist/index.js sits one level below the package root, where package.json is always published
@@ -27,6 +29,22 @@ function parseTimeout(raw: string | undefined): number | undefined {
   return seconds;
 }
 
+const JSON_DESCRIPTION = "Print the result as one JSON document on stdout (human-readable logs go to stderr)";
+
+/** In --json mode stdout must hold exactly one JSON document, so every other log line goes to stderr. */
+function routeLogsToStderr(): void {
+  const toStderr = (...args: unknown[]) => console.error(...args);
+  console.log = toStderr;
+  console.info = toStderr;
+  console.debug = toStderr;
+}
+
+/** Exits with `exitCode`, first writing `json` (when given) to stdout and waiting for it to flush so piped output isn't cut off. */
+function finish(exitCode: number, json?: unknown): void {
+  if (json === undefined) process.exit(exitCode);
+  process.stdout.write(`${JSON.stringify(json, null, 2)}\n`, () => process.exit(exitCode));
+}
+
 const program = new Command();
 
 program
@@ -40,7 +58,10 @@ program
   .description("Run build, lint, and tests — report issues without modifying files")
   .option("-p, --path <dir>", "Path to the target project", ".")
   .option("-t, --timeout <seconds>", TIMEOUT_DESCRIPTION)
+  .option("--json", JSON_DESCRIPTION)
   .action(async (opts) => {
+    const json: boolean = opts.json === true;
+    if (json) routeLogsToStderr();
     try {
       const cwd = path.resolve(opts.path);
       const timeoutSeconds = parseTimeout(opts.timeout);
@@ -66,10 +87,18 @@ program
 
       const allPassed = build.success && lint.success && test.success;
       console.log(`\n${allPassed ? "✅ All checks passed" : "❌ Issues found — run 'bugzero rescue' to repair"}\n`);
-      process.exit(allPassed ? 0 : 1);
+      finish(
+        allPassed ? 0 : 1,
+        json
+          ? buildHuntJson(
+              { path: cwd, framework, packageManager, reportPath: path.resolve(cwd, REPORT_FILENAME) },
+              { build, lint, test }
+            )
+          : undefined
+      );
     } catch (error: any) {
       console.error(`\n❌ [BugZero] Execution failed: ${error.message || error}`);
-      process.exit(1);
+      finish(1, json ? buildErrorJson(String(error.message || error)) : undefined);
     }
   });
 
@@ -81,7 +110,10 @@ program
   .option("-n, --max-attempts <number>", "Maximum AI fix attempts", "3")
   .option("-t, --timeout <seconds>", TIMEOUT_DESCRIPTION)
   .option("--dry-run", "Analyse only — print what would be fixed without writing files", false)
+  .option("--json", JSON_DESCRIPTION)
   .action(async (opts) => {
+    const json: boolean = opts.json === true;
+    if (json) routeLogsToStderr();
     try {
       const cwd = path.resolve(opts.path);
       const maxAttempts = resolveMaxAttempts(Number(opts.maxAttempts));
@@ -106,10 +138,21 @@ program
       for (const line of summary.lines) console.log(line);
       console.log();
 
-      process.exit(summary.exitCode);
+      finish(
+        summary.exitCode,
+        json
+          ? buildRescueJson(result, {
+              path: cwd,
+              framework,
+              packageManager,
+              dryRun,
+              reportPath: path.resolve(cwd, REPORT_FILENAME),
+            })
+          : undefined
+      );
     } catch (error: any) {
       console.error(`\n❌ [BugZero] Execution failed: ${error.message || error}`);
-      process.exit(1);
+      finish(1, json ? buildErrorJson(String(error.message || error)) : undefined);
     }
   });
 

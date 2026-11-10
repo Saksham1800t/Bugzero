@@ -7,7 +7,9 @@ function loadEnv() {
   while (true) {
     const envPath = path.join(dir, ".env");
     if (fs.existsSync(envPath)) {
-      dotenv.config({ path: envPath });
+      // quiet: dotenv 17 otherwise prints a promotional tip on stdout, which pollutes
+      // `bugzero --version` and any machine-readable output.
+      dotenv.config({ path: envPath, quiet: true });
       return;
     }
     const parent = path.dirname(dir);
@@ -17,7 +19,7 @@ function loadEnv() {
     dir = parent;
   }
   // Fallback to default behavior if no .env is found in parent directories
-  dotenv.config();
+  dotenv.config({ quiet: true });
 }
 
 loadEnv();

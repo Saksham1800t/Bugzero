@@ -114,6 +114,7 @@ bugzero rescue
 ### Integrations and output
 
 - **Markdown reports.** Every `hunt` and `rescue` run writes `bugzero-report.md` to the target project: a pass/fail summary of build, lint, and tests, the full error logs, the model used, token usage, and before/after diffs for every file patched. The terminal prints a clickable link straight to it.
+- **JSON output.** Add `--json` to `hunt` or `rescue` to print the result as a single JSON document on stdout, with all human-readable logs moved to stderr and the exit code unchanged (0 on success, 1 otherwise), so scripts and CI can parse it. See [Scripting and CI](#scripting-and-ci).
 - **GitHub Action mode.** Run the same repair loop in CI. Instead of patching a local checkout, the Action commits every changed file in one atomic commit through the GitHub API and opens a pull request — see [GitHub Action Mode](#github-action-mode) below.
 
 ---
@@ -191,7 +192,7 @@ OPENROUTER_API_KEY=your_openrouter_api_key_here
 ## Commands
 
 ### `bugzero hunt`
-Run build, lint, and test checks. Reports all failures without modifying any files. Accepts `--timeout <seconds>`, like `rescue`.
+Run build, lint, and test checks. Reports all failures without modifying any files. Accepts `--timeout <seconds>` and `--json`, like `rescue`.
 
 ```bash
 bugzero hunt --path /path/to/your/project
@@ -213,6 +214,7 @@ bugzero rescue --path /path/to/your/project
 | `--max-attempts <n>` | `-n` | `3` | Maximum AI fix iterations before giving up |
 | `--timeout <seconds>` | `-t` | none | Stop any build, lint, or test command that runs longer than this many seconds |
 | `--dry-run` | | `false` | Analyze only — no files will be written |
+| `--json` | | `false` | Print the result as one JSON document on stdout (logs go to stderr) |
 
 </details>
 
@@ -233,6 +235,19 @@ bugzero vibe
 - Meta Llama 3.3 Instruct
 
 </details>
+
+---
+
+## Scripting and CI
+
+`hunt` and `rescue` accept `--json`. Stdout then contains exactly one JSON document and every human-readable log line goes to stderr, so the output is safe to pipe. Exit codes don't change: `0` when everything passes or is fixed, `1` otherwise.
+
+```bash
+bugzero hunt --json | jq '.steps'
+bugzero rescue --json --dry-run | jq -r '.outcome'
+```
+
+`hunt` reports each step (`build`, `lint`, `test`) as `passed`, `failed`, or `skipped`; failed steps include the command's output and whether it timed out. `rescue` reports an `outcome` of `already-passing`, `fixed`, `failed`, or `dry-run`, along with the model, token usage, and the files and root cause of any fix. Both include the path to the generated report. If a run can't start at all (for example, because of an invalid option), stdout is `{ "success": false, "error": "..." }`.
 
 ---
 
