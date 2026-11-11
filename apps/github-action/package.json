@@ -9,7 +9,8 @@
   "dependencies": {
     "@actions/core": "^1.11.1",
     "@actions/github": "^6.0.1",
-    "@opspilot/core": "workspace:*"
+    "@opspilot/core": "workspace:*",
+    "@opspilot/shared": "workspace:*"
   },
   "devDependencies": {
     "tsup": "^8.5.1"

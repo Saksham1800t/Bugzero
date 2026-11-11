@@ -22,6 +22,23 @@ export const GraphState = Annotation.Root({
     reducer: (_, value) => value,
     default: () => null,
   }),
+  /**
+   * Everything that has actually been written to disk so far, across ALL attempts.
+   * `fixSuggestion` is replaced on every attempt, so it can't answer "what changed?" —
+   * earlier attempts' edits stay on disk even after a later attempt proposes something new.
+   * Patches accumulate in order; rootCause and explanation come from the latest applied attempt.
+   */
+  appliedFix: Annotation<AIFixSuggestion | null>({
+    reducer: (previous, applied) =>
+      applied === null
+        ? previous
+        : {
+            rootCause: applied.rootCause,
+            explanation: applied.explanation,
+            patches: [...(previous?.patches ?? []), ...applied.patches],
+          },
+    default: () => null,
+  }),
   /** Number of fix attempts made so far */
   attempts: Annotation<number>({
     reducer: (_, value) => value,

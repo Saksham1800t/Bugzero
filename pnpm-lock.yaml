@@ -64,6 +64,9 @@ importers:
       '@opspilot/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@opspilot/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
 
   apps/github-action:
     dependencies:
@@ -76,6 +79,9 @@ importers:
       '@opspilot/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@opspilot/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
     devDependencies:
       tsup:
         specifier: ^8.5.1

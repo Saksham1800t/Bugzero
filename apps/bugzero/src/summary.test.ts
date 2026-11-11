@@ -60,6 +60,26 @@ describe("buildRescueSummary", () => {
     expect(summary.lines).toContain("   Files:   src/a.ts, src/b.ts");
   });
 
+  it("lists a file once even when several attempts patched it", () => {
+    const summary = buildRescueSummary(
+      {
+        success: true,
+        attempts: 2,
+        appliedFix: {
+          ...appliedFix,
+          patches: [
+            { filePath: "src/a.ts", search: "a", replace: "b" },
+            { filePath: "src/b.ts", search: "a", replace: "b" },
+            { filePath: "src/a.ts", search: "a", replace: "b" },
+          ],
+        },
+      },
+      { dryRun: false }
+    );
+
+    expect(summary.lines).toContain("   Files:   src/a.ts, src/b.ts");
+  });
+
   it("reports a real failure with the error and exits 1", () => {
     const summary = buildRescueSummary(
       {

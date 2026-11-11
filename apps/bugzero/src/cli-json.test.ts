@@ -2,7 +2,11 @@ import { spawnSync } from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Each test starts a real CLI process (a few seconds, more when the machine is busy
+// running the rest of the suite), which can blow past vitest's 5s default.
+vi.setConfig({ testTimeout: 60_000 });
 
 // These tests run the real built CLI. The property they protect — stdout holds
 // exactly one JSON document — is the kind that breaks silently if anyone adds a
