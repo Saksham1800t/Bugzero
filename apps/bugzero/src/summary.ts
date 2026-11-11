@@ -1,4 +1,5 @@
 import type { orchestrateAndFix } from "@opspilot/core";
+import { uniqueFilePaths } from "@opspilot/shared";
 
 type RescueResult = Awaited<ReturnType<typeof orchestrateAndFix>>;
 
@@ -30,8 +31,9 @@ export function buildRescueSummary(result: RescueResult, options: { dryRun: bool
     ];
     if (result.appliedFix) {
       const { patches, explanation, rootCause } = result.appliedFix;
+      const files = uniqueFilePaths(patches);
       lines.push(
-        `   File${patches.length === 1 ? "" : "s"}:   ${patches.map((p) => p.filePath).join(", ")}`,
+        `   File${files.length === 1 ? "" : "s"}:   ${files.join(", ")}`,
         `   Reason: ${explanation}`,
         `   Root cause: ${rootCause}`
       );

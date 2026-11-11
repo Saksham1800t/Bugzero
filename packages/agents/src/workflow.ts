@@ -78,7 +78,8 @@ async function applyFixNode(state: typeof GraphState.State) {
     }
   }
 
-  return {};
+  // Record the patches that really reached disk; a failed (rolled-back) attempt returned above and adds nothing.
+  return { appliedFix: state.fixSuggestion };
 }
 
 // ── Node: re-run the pipeline to verify the fix worked ───────────────────

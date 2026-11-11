@@ -99,6 +99,43 @@ describe("run", () => {
     expect(mockOrchestrateAndFix).toHaveBeenCalledWith({ cwd: tmpDir, maxAttempts: 3, timeoutSeconds: 120 });
   });
 
+  it("commits every file touched across all attempts, each once, with its current content", async () => {
+    fs.mkdirSync(path.join(tmpDir, "src"));
+    fs.writeFileSync(path.join(tmpDir, "src", "a.ts"), "const a = 2;", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, "src", "b.ts"), "const b = 1;", "utf-8");
+
+    mockOrchestrateAndFix.mockResolvedValueOnce({
+      success: true,
+      attempts: 2,
+      finalOutput: "",
+      appliedFix: {
+        rootCause: "Renamed export not updated",
+        explanation: "Updated both files",
+        patches: [
+          { filePath: "src/a.ts", search: "x", replace: "y" }, // attempt 1
+          { filePath: "src/b.ts", search: "x", replace: "y" }, // attempt 2
+          { filePath: "src/a.ts", search: "x", replace: "y" }, // attempt 2 touched a.ts again
+        ],
+      },
+    });
+
+    await run({
+      cwd: tmpDir,
+      maxAttempts: 3,
+      octokit,
+      repo: { owner: "acme", repo: "widgets" },
+      baseBranch: "main",
+    });
+
+    const blobContents = (octokit.rest.git.createBlob as any).mock.calls.map((call: any[]) => call[0].content);
+    expect(blobContents).toEqual(["const a = 2;", "const b = 1;"]);
+    expect(octokit.rest.git.createTree).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tree: [expect.objectContaining({ path: "src/a.ts" }), expect.objectContaining({ path: "src/b.ts" })],
+      })
+    );
+  });
+
   it("does not open a pull request when the repair fails", async () => {
     mockOrchestrateAndFix.mockResolvedValueOnce({
       success: false,

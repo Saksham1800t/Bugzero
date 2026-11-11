@@ -93,6 +93,27 @@ describe("buildRescueJson", () => {
     });
   });
 
+  it("lists each patched file once in fix.files, even if several attempts patched it", () => {
+    const json = buildRescueJson(
+      {
+        success: true,
+        attempts: 2,
+        appliedFix: {
+          rootCause: "r",
+          explanation: "e",
+          patches: [
+            { filePath: "src/a.ts", search: "x", replace: "y" },
+            { filePath: "src/b.ts", search: "x", replace: "y" },
+            { filePath: "src/a.ts", search: "x", replace: "y" },
+          ],
+        },
+      },
+      rescueInfo
+    );
+
+    expect(json.fix?.files).toEqual(["src/a.ts", "src/b.ts"]);
+  });
+
   it("reports a failed repair with its error", () => {
     const json = buildRescueJson(
       { success: false, attempts: 3, error: "Max attempts (3) reached without a successful build." },

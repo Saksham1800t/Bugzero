@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { orchestrateAndFix } from "@opspilot/core";
+import { uniqueFilePaths } from "@opspilot/shared";
 import { MinimalOctokit, openFixPullRequest, RepoRef } from "./open-pull-request";
 
 export interface RunOptions {
@@ -38,9 +39,10 @@ export async function run(options: RunOptions): Promise<RunResult> {
     return { fixed: false, reason: result.error ?? "No fix was found." };
   }
 
-  const files = result.appliedFix.patches.map((patch) => ({
-    path: patch.filePath,
-    content: fs.readFileSync(path.resolve(cwd, patch.filePath), "utf-8"),
+  // The working tree already holds every attempt's edits, so commit each touched file's current content once.
+  const files = uniqueFilePaths(result.appliedFix.patches).map((filePath) => ({
+    path: filePath,
+    content: fs.readFileSync(path.resolve(cwd, filePath), "utf-8"),
   }));
 
   const fileList = files.map((f) => `- \`${f.path}\``).join("\n");
