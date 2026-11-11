@@ -1,4 +1,5 @@
 import type { orchestrateAndFix } from "@opspilot/core";
+import { uniqueFilePaths } from "@opspilot/shared";
 
 type RescueResult = Awaited<ReturnType<typeof orchestrateAndFix>>;
 
@@ -109,7 +110,7 @@ export function buildRescueJson(result: RescueResult, info: ProjectInfo & { dryR
       ? {
           rootCause: result.appliedFix.rootCause,
           explanation: result.appliedFix.explanation,
-          files: result.appliedFix.patches.map((p) => p.filePath),
+          files: uniqueFilePaths(result.appliedFix.patches),
         }
       : null,
     error: result.error ?? null,

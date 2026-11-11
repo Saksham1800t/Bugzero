@@ -1,6 +1,6 @@
 import { runBuild, runLint, runTests, parseErrors, runValidationPipeline } from "@opspilot/analyzers";
 import { runRepairWorkflow } from "@opspilot/agents";
-import type { FixResult } from "@opspilot/shared";
+import { uniqueFilePaths, type FixResult } from "@opspilot/shared";
 import fs from "fs";
 import path from "path";
 import { pathToFileURL } from "url";
@@ -112,7 +112,7 @@ export async function orchestrateAndFix(
     success: finalState.success,
     attempts: finalState.attempts,
     finalOutput: finalState.logs || pipelineResult.output,
-    appliedFix: finalState.fixSuggestion ?? undefined,
+    appliedFix: finalState.appliedFix ?? undefined,
     error: finalState.success
       ? undefined
       : `Max attempts (${maxAttempts}) reached without a successful build.`,
@@ -257,7 +257,7 @@ ${logs}
       }
     } else if (success && appliedFix) {
       console.log("[BugZero] Calling AI to write solution summary report...");
-      const patchedFiles = appliedFix.patches.map((p: { filePath: string }) => p.filePath).join(", ");
+      const patchedFiles = uniqueFilePaths(appliedFix.patches).join(", ");
       const prompt = `You are an expert software engineer assistant. An automated AI agent successfully resolved a build/lint/test failure in a project located at "${cwd}" after ${attempts} attempts by applying a patch to: ${patchedFiles}.
 Here is the patch details:
 - Root Cause: ${appliedFix.rootCause}
@@ -289,7 +289,7 @@ Generate the Markdown report directly. Do not wrap it in markdown block fences (
 - **Token Usage:** ${promptTokens !== undefined && completionTokens !== undefined ? `Prompt: **${promptTokens}** | Completion: **${completionTokens}** | Total: **${promptTokens + completionTokens}**` : "*N/A*"}
 
 ## 🛠️ Applied Solution
-- **Target File(s):** ${appliedFix.patches.map((p: { filePath: string }) => `\`${p.filePath}\``).join(", ")}
+- **Target File(s):** ${uniqueFilePaths(appliedFix.patches).map((file) => `\`${file}\``).join(", ")}
 - **Root Cause:** ${appliedFix.rootCause}
 - **Explanation:** ${appliedFix.explanation}
 

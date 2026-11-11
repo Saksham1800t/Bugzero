@@ -54,7 +54,8 @@
   "devDependencies": {
     "@opspilot/agents": "workspace:*",
     "@opspilot/config": "workspace:*",
-    "@opspilot/core": "workspace:*"
+    "@opspilot/core": "workspace:*",
+    "@opspilot/shared": "workspace:*"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

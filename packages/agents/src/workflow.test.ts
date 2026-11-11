@@ -238,4 +238,84 @@ describe("bugzero repair workflow", () => {
     expect(mockInvoke).toHaveBeenCalledTimes(12);
     expect(finalState.success).toBe(false);
   });
+
+  describe("appliedFix across attempts", () => {
+    const fixFor = (filePath: string, rootCause: string) =>
+      JSON.stringify({
+        rootCause,
+        explanation: `Fix for ${filePath}`,
+        patches: [{ filePath, search: "x", replace: "y" }],
+      });
+    const filesOf = (fix: { patches: { filePath: string }[] } | null | undefined) =>
+      fix?.patches.map((p) => p.filePath);
+
+    it("accumulates the patches from every attempt that was applied, in order", async () => {
+      mockInvoke
+        .mockResolvedValueOnce(aiResponse(fixFor("src/a.ts", "first cause")))
+        .mockResolvedValueOnce(aiResponse(fixFor("src/b.ts", "second cause")));
+      mockApplyPatches.mockReturnValue({ success: true, applied: [appliedPatch("src/a.ts")] });
+      mockRunValidationPipeline
+        .mockResolvedValueOnce({ success: false, step: "build", output: "still broken" })
+        .mockResolvedValueOnce({ success: true, step: "none", output: "" });
+
+      const finalState = await runRepairWorkflow({ cwd: "/project", logs: "boom", maxAttempts: 3 });
+
+      expect(finalState.success).toBe(true);
+      expect(filesOf(finalState.appliedFix)).toEqual(["src/a.ts", "src/b.ts"]);
+      // The explanation and root cause describe the most recent applied attempt.
+      expect(finalState.appliedFix?.rootCause).toBe("second cause");
+      expect(finalState.appliedFix?.explanation).toBe("Fix for src/b.ts");
+    });
+
+    it("keeps every edit when a later attempt patches the same file again", async () => {
+      mockInvoke
+        .mockResolvedValueOnce(aiResponse(fixFor("src/a.ts", "first cause")))
+        .mockResolvedValueOnce(aiResponse(fixFor("src/a.ts", "second cause")));
+      mockApplyPatches.mockReturnValue({ success: true, applied: [appliedPatch("src/a.ts")] });
+      mockRunValidationPipeline
+        .mockResolvedValueOnce({ success: false, step: "build", output: "still broken" })
+        .mockResolvedValueOnce({ success: true, step: "none", output: "" });
+
+      const finalState = await runRepairWorkflow({ cwd: "/project", logs: "boom", maxAttempts: 3 });
+
+      expect(filesOf(finalState.appliedFix)).toEqual(["src/a.ts", "src/a.ts"]);
+    });
+
+    it("does not include patches from an attempt that failed to apply", async () => {
+      mockInvoke
+        .mockResolvedValueOnce(aiResponse(fixFor("src/a.ts", "first cause")))
+        .mockResolvedValueOnce(aiResponse(fixFor("src/b.ts", "second cause")));
+      mockApplyPatches
+        .mockReturnValueOnce({ success: false, error: 'Failed to patch "src/a.ts": not found', applied: [] })
+        .mockReturnValue({ success: true, applied: [appliedPatch("src/b.ts")] });
+      mockRunValidationPipeline.mockResolvedValue({ success: false, step: "build", output: "still broken" });
+
+      const finalState = await runRepairWorkflow({ cwd: "/project", logs: "boom", maxAttempts: 2 });
+
+      expect(filesOf(finalState.appliedFix)).toEqual(["src/b.ts"]);
+    });
+
+    it("keeps earlier applied patches when a later attempt returns nothing usable", async () => {
+      mockInvoke
+        .mockResolvedValueOnce(aiResponse(fixFor("src/a.ts", "first cause")))
+        .mockResolvedValueOnce(aiResponse("Sorry, I can't help with that."));
+      mockApplyPatches.mockReturnValue({ success: true, applied: [appliedPatch("src/a.ts")] });
+      mockRunValidationPipeline.mockResolvedValue({ success: false, step: "build", output: "still broken" });
+
+      const finalState = await runRepairWorkflow({ cwd: "/project", logs: "boom", maxAttempts: 2 });
+
+      expect(filesOf(finalState.appliedFix)).toEqual(["src/a.ts"]);
+      expect(mockApplyPatches).toHaveBeenCalledTimes(1);
+    });
+
+    it("is null when no patch was ever applied", async () => {
+      mockInvoke.mockResolvedValue(aiResponse("Sorry, I can't help with that."));
+      mockRunValidationPipeline.mockResolvedValue({ success: false, step: "build", output: "still broken" });
+
+      const finalState = await runRepairWorkflow({ cwd: "/project", logs: "boom", maxAttempts: 2 });
+
+      expect(finalState.appliedFix).toBeNull();
+      expect(mockApplyPatches).not.toHaveBeenCalled();
+    });
+  });
 });

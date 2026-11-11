@@ -111205,6 +111205,20 @@ var require_dist11 = __commonJS({
         reducer: (_, value) => value,
         default: () => null
       }),
+      /**
+       * Everything that has actually been written to disk so far, across ALL attempts.
+       * `fixSuggestion` is replaced on every attempt, so it can't answer "what changed?" —
+       * earlier attempts' edits stay on disk even after a later attempt proposes something new.
+       * Patches accumulate in order; rootCause and explanation come from the latest applied attempt.
+       */
+      appliedFix: (0, import_langgraph.Annotation)({
+        reducer: (previous, applied) => applied === null ? previous : {
+          rootCause: applied.rootCause,
+          explanation: applied.explanation,
+          patches: [...previous?.patches ?? [], ...applied.patches]
+        },
+        default: () => null
+      }),
       /** Number of fix attempts made so far */
       attempts: (0, import_langgraph.Annotation)({
         reducer: (_, value) => value,
@@ -111308,7 +111322,7 @@ Any other files from that same suggestion were rolled back to keep the change at
           console.log(`[BugZero] Note: exact match failed for ${applied.filePath} \u2014 patch applied via ${applied.matchStrategy} matching.`);
         }
       }
-      return {};
+      return { appliedFix: state.fixSuggestion };
     }
     async function verifyNode(state) {
       if (state.logs.includes("[BugZero System Warning]")) {
@@ -111350,8 +111364,40 @@ Any other files from that same suggestion were rolled back to keep the change at
   }
 });
 
-// ../../packages/core/dist/index.js
+// ../../packages/shared/dist/index.js
 var require_dist12 = __commonJS({
+  "../../packages/shared/dist/index.js"(exports2, module2) {
+    "use strict";
+    var __defProp2 = Object.defineProperty;
+    var __getOwnPropDesc2 = Object.getOwnPropertyDescriptor;
+    var __getOwnPropNames2 = Object.getOwnPropertyNames;
+    var __hasOwnProp2 = Object.prototype.hasOwnProperty;
+    var __export2 = (target, all) => {
+      for (var name in all)
+        __defProp2(target, name, { get: all[name], enumerable: true });
+    };
+    var __copyProps2 = (to, from, except, desc) => {
+      if (from && typeof from === "object" || typeof from === "function") {
+        for (let key of __getOwnPropNames2(from))
+          if (!__hasOwnProp2.call(to, key) && key !== except)
+            __defProp2(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc2(from, key)) || desc.enumerable });
+      }
+      return to;
+    };
+    var __toCommonJS2 = (mod) => __copyProps2(__defProp2({}, "__esModule", { value: true }), mod);
+    var index_exports = {};
+    __export2(index_exports, {
+      uniqueFilePaths: () => uniqueFilePaths2
+    });
+    module2.exports = __toCommonJS2(index_exports);
+    function uniqueFilePaths2(patches) {
+      return [...new Set(patches.map((patch) => patch.filePath))];
+    }
+  }
+});
+
+// ../../packages/core/dist/index.js
+var require_dist13 = __commonJS({
   "../../packages/core/dist/index.js"(exports2, module2) {
     "use strict";
     var __create2 = Object.create;
@@ -111422,6 +111468,7 @@ var require_dist12 = __commonJS({
     }
     var import_analyzers = require_dist();
     var import_agents = require_dist11();
+    var import_shared2 = require_dist12();
     var import_fs3 = __toESM2(require("fs"));
     var import_path3 = __toESM2(require("path"));
     var import_url = require("url");
@@ -111561,7 +111608,7 @@ Re-run without \`--dry-run\` to let BugZero attempt a fix.
         success: finalState.success,
         attempts: finalState.attempts,
         finalOutput: finalState.logs || pipelineResult.output,
-        appliedFix: finalState.fixSuggestion ?? void 0,
+        appliedFix: finalState.appliedFix ?? void 0,
         error: finalState.success ? void 0 : `Max attempts (${maxAttempts}) reached without a successful build.`,
         modelUsed: finalState.modelUsed,
         promptTokens: finalState.promptTokens,
@@ -111695,7 +111742,7 @@ ${logs}
           }
         } else if (success && appliedFix) {
           console.log("[BugZero] Calling AI to write solution summary report...");
-          const patchedFiles = appliedFix.patches.map((p) => p.filePath).join(", ");
+          const patchedFiles = (0, import_shared2.uniqueFilePaths)(appliedFix.patches).join(", ");
           const prompt = `You are an expert software engineer assistant. An automated AI agent successfully resolved a build/lint/test failure in a project located at "${cwd}" after ${attempts} attempts by applying a patch to: ${patchedFiles}.
 Here is the patch details:
 - Root Cause: ${appliedFix.rootCause}
@@ -111733,7 +111780,7 @@ Generate the Markdown report directly. Do not wrap it in markdown block fences (
 - **Token Usage:** ${promptTokens !== void 0 && completionTokens !== void 0 ? `Prompt: **${promptTokens}** | Completion: **${completionTokens}** | Total: **${promptTokens + completionTokens}**` : "*N/A*"}
 
 ## \u{1F6E0}\uFE0F Applied Solution
-- **Target File(s):** ${appliedFix.patches.map((p) => `\`${p.filePath}\``).join(", ")}
+- **Target File(s):** ${(0, import_shared2.uniqueFilePaths)(appliedFix.patches).map((file) => `\`${file}\``).join(", ")}
 - **Root Cause:** ${appliedFix.rootCause}
 - **Explanation:** ${appliedFix.explanation}
 
@@ -111821,7 +111868,8 @@ var github = __toESM(require_github());
 // src/run.ts
 var import_fs = __toESM(require("fs"));
 var import_path = __toESM(require("path"));
-var import_core2 = __toESM(require_dist12());
+var import_core2 = __toESM(require_dist13());
+var import_shared = __toESM(require_dist12());
 
 // src/open-pull-request.ts
 async function openFixPullRequest(options) {
@@ -111866,9 +111914,9 @@ async function run(options) {
   if (!result.success || !result.appliedFix) {
     return { fixed: false, reason: result.error ?? "No fix was found." };
   }
-  const files = result.appliedFix.patches.map((patch) => ({
-    path: patch.filePath,
-    content: import_fs.default.readFileSync(import_path.default.resolve(cwd, patch.filePath), "utf-8")
+  const files = (0, import_shared.uniqueFilePaths)(result.appliedFix.patches).map((filePath) => ({
+    path: filePath,
+    content: import_fs.default.readFileSync(import_path.default.resolve(cwd, filePath), "utf-8")
   }));
   const fileList = files.map((f) => `- \`${f.path}\``).join("\n");
   const branchName = `${branchPrefix}-${Date.now()}`;
