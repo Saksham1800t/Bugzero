@@ -9,6 +9,8 @@ Entries for releases before 0.0.45 are not written up yet; see the
 
 ## [Unreleased]
 
+## [0.0.45] - 2026-11-11
+
 ### Fixed
 
 - **A fix that took several attempts now reports every file it changed.** `rescue`, the generated
