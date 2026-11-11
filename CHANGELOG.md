@@ -5,7 +5,7 @@ All notable changes to BugZero are documented here. The format follows
 [Semantic Versioning](https://semver.org/) (pre-1.0: patch releases may add features).
 
 Entries for releases before 0.0.45 are not written up yet; see the
-[GitHub tags](https://github.com/Saksham1800t/Bugzero/tags) for those. A backfill is planned in `ROADMAP.md`.
+[GitHub tags](https://github.com/Saksham1800t/Bugzero/tags) for those. A backfill is planned.
 
 ## [Unreleased]
 
