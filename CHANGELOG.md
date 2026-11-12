@@ -9,6 +9,8 @@ Entries for releases before 0.0.45 are not written up yet; see the
 
 ## [Unreleased]
 
+## [0.0.46] - 2026-11-12
+
 ### Fixed
 
 - **A patch that failed to apply no longer stops later attempts from being verified.** After one
