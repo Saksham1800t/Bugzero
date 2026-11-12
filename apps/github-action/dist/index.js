@@ -111219,6 +111219,15 @@ var require_dist11 = __commonJS({
         },
         default: () => null
       }),
+      /**
+       * True when the current attempt's patch could not be applied, so there is nothing new to verify.
+       * Every attempt sets it afresh. (This used to be inferred from a warning left in `logs`, which stayed
+       * there after the failure and made every later attempt skip verification too.)
+       */
+      patchFailed: (0, import_langgraph.Annotation)({
+        reducer: (_, value) => value,
+        default: () => false
+      }),
       /** Number of fix attempts made so far */
       attempts: (0, import_langgraph.Annotation)({
         reducer: (_, value) => value,
@@ -111297,7 +111306,7 @@ var require_dist11 = __commonJS({
     async function applyFixNode(state) {
       if (!state.fixSuggestion) {
         console.warn("[BugZero] No fix suggestion available \u2014 skipping patch.");
-        return {};
+        return { patchFailed: false };
       }
       const { patches, explanation } = state.fixSuggestion;
       const fileList = patches.map((p) => p.filePath).join(", ");
@@ -111313,7 +111322,8 @@ var require_dist11 = __commonJS({
 
 Any other files from that same suggestion were rolled back to keep the change atomic. Please check if the file path(s) are correct relative to the project root and make sure you target the correct file(s) that contain the build error.`;
         return {
-          logs: updatedLogs
+          logs: updatedLogs,
+          patchFailed: true
         };
       }
       for (const applied of result.applied) {
@@ -111322,10 +111332,10 @@ Any other files from that same suggestion were rolled back to keep the change at
           console.log(`[BugZero] Note: exact match failed for ${applied.filePath} \u2014 patch applied via ${applied.matchStrategy} matching.`);
         }
       }
-      return { appliedFix: state.fixSuggestion };
+      return { appliedFix: state.fixSuggestion, patchFailed: false };
     }
     async function verifyNode(state) {
-      if (state.logs.includes("[BugZero System Warning]")) {
+      if (state.patchFailed) {
         console.log("[BugZero] Skipping validation pipeline because the patch failed to apply.");
         return {
           success: false,

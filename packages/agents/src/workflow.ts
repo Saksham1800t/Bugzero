@@ -53,7 +53,7 @@ async function analyzeNode(state: typeof GraphState.State) {
 async function applyFixNode(state: typeof GraphState.State) {
   if (!state.fixSuggestion) {
     console.warn("[BugZero] No fix suggestion available — skipping patch.");
-    return {};
+    return { patchFailed: false };
   }
 
   const { patches, explanation } = state.fixSuggestion;
@@ -68,6 +68,7 @@ async function applyFixNode(state: typeof GraphState.State) {
     const updatedLogs = `${state.logs}\n\n⚠️ [BugZero System Warning] Your previous patch suggestion failed with the following error:\n- ${result.error}\n\nAny other files from that same suggestion were rolled back to keep the change atomic. Please check if the file path(s) are correct relative to the project root and make sure you target the correct file(s) that contain the build error.`;
     return {
       logs: updatedLogs,
+      patchFailed: true,
     };
   }
 
@@ -79,13 +80,13 @@ async function applyFixNode(state: typeof GraphState.State) {
   }
 
   // Record the patches that really reached disk; a failed (rolled-back) attempt returned above and adds nothing.
-  return { appliedFix: state.fixSuggestion };
+  return { appliedFix: state.fixSuggestion, patchFailed: false };
 }
 
 // ── Node: re-run the pipeline to verify the fix worked ───────────────────
 async function verifyNode(state: typeof GraphState.State) {
-  // If the patch failed, do not run the validation pipeline (saves time) and preserve the warning in logs
-  if (state.logs.includes("[BugZero System Warning]")) {
+  // If this attempt's patch failed, do not run the validation pipeline (saves time) and preserve the warning in logs
+  if (state.patchFailed) {
     console.log("[BugZero] Skipping validation pipeline because the patch failed to apply.");
     return {
       success: false,

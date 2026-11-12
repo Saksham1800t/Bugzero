@@ -9,6 +9,13 @@ Entries for releases before 0.0.45 are not written up yet; see the
 
 ## [Unreleased]
 
+### Fixed
+
+- **A patch that failed to apply no longer stops later attempts from being verified.** After one
+  patch failed, a leftover warning in the error log made every following attempt skip validation. A
+  correct patch applied on a later attempt was never checked, so the run could not succeed and used up
+  every remaining attempt. Each attempt is now checked on its own.
+
 ## [0.0.45] - 2026-11-11
 
 ### Fixed

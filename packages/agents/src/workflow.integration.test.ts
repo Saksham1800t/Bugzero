@@ -77,4 +77,26 @@ describe("repair workflow end to end (fake model, real patcher and pipeline)", (
     expect(state.appliedFix?.patches.map((p) => p.filePath)).toEqual(["a.txt", "b.txt"]);
     expect(state.appliedFix?.rootCause).toBe("b.txt was also broken");
   });
+
+  it("still verifies and finishes the repair after an early patch fails to apply", async () => {
+    const wrongSearch = JSON.stringify({
+      rootCause: "guessed the wrong text",
+      explanation: "Search text that is not in the file",
+      patches: [{ filePath: "a.txt", search: "this text is not in the file", replace: "FIXED" }],
+    });
+    scriptedReplies.push(wrongSearch, reply("a.txt", "a.txt was broken"), reply("b.txt", "b.txt was also broken"));
+
+    const state = await runRepairWorkflow({
+      cwd: projectDir,
+      logs: "error: a.txt is still broken",
+      maxAttempts: 4,
+    });
+
+    // Attempt 1 could not be applied. Attempts 2 and 3 must each be verified, so the run reaches success.
+    expect(state.success).toBe(true);
+    expect(state.attempts).toBe(3);
+    expect(fs.readFileSync(path.join(projectDir, "a.txt"), "utf8")).toBe("state: FIXED\n");
+    expect(fs.readFileSync(path.join(projectDir, "b.txt"), "utf8")).toBe("state: FIXED\n");
+    expect(state.appliedFix?.patches.map((p) => p.filePath)).toEqual(["a.txt", "b.txt"]);
+  });
 });

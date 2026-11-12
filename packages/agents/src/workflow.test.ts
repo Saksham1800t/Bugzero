@@ -318,4 +318,59 @@ describe("bugzero repair workflow", () => {
       expect(mockApplyPatches).not.toHaveBeenCalled();
     });
   });
+
+  describe("verification after a patch that failed to apply", () => {
+    const patchError = { success: false, error: 'Failed to patch "src/index.ts": Search string not found', applied: [] };
+    const patchOk = () => ({ success: true, applied: [appliedPatch("src/index.ts")] });
+
+    it("verifies a patch that applies on a later attempt, and can succeed", async () => {
+      mockInvoke.mockResolvedValue(aiResponse(JSON.stringify(validFix)));
+      mockApplyPatches.mockReturnValueOnce(patchError).mockReturnValue(patchOk());
+      mockRunValidationPipeline.mockResolvedValue({ success: true, step: "none", output: "" });
+
+      const finalState = await runRepairWorkflow({ cwd: "/project", logs: "boom", maxAttempts: 3 });
+
+      expect(finalState.success).toBe(true);
+      expect(finalState.attempts).toBe(2);
+      expect(mockRunValidationPipeline).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps verifying every later attempt that applies", async () => {
+      mockInvoke.mockResolvedValue(aiResponse(JSON.stringify(validFix)));
+      mockApplyPatches.mockReturnValueOnce(patchError).mockReturnValue(patchOk());
+      mockRunValidationPipeline
+        .mockResolvedValueOnce({ success: false, step: "build", output: "still broken" })
+        .mockResolvedValueOnce({ success: true, step: "none", output: "" });
+
+      const finalState = await runRepairWorkflow({ cwd: "/project", logs: "boom", maxAttempts: 4 });
+
+      expect(finalState.success).toBe(true);
+      expect(finalState.attempts).toBe(3);
+      expect(mockRunValidationPipeline).toHaveBeenCalledTimes(2);
+    });
+
+    it("still skips verification while patches keep failing to apply", async () => {
+      mockInvoke.mockResolvedValue(aiResponse(JSON.stringify(validFix)));
+      mockApplyPatches.mockReturnValue(patchError);
+
+      const finalState = await runRepairWorkflow({ cwd: "/project", logs: "boom", maxAttempts: 2 });
+
+      expect(finalState.success).toBe(false);
+      expect(mockRunValidationPipeline).not.toHaveBeenCalled();
+      expect(finalState.logs.match(/\[BugZero System Warning\]/g)).toHaveLength(2);
+    });
+
+    it("does not carry a failed patch over to an attempt that proposed nothing", async () => {
+      mockInvoke
+        .mockResolvedValueOnce(aiResponse(JSON.stringify(validFix)))
+        .mockResolvedValueOnce(aiResponse("Sorry, I can't help with that."));
+      mockApplyPatches.mockReturnValueOnce(patchError);
+      mockRunValidationPipeline.mockResolvedValue({ success: false, step: "build", output: "still broken" });
+
+      await runRepairWorkflow({ cwd: "/project", logs: "boom", maxAttempts: 2 });
+
+      // Attempt 1's patch failed (no validation). Attempt 2 applied nothing, so it validates as it always has.
+      expect(mockRunValidationPipeline).toHaveBeenCalledTimes(1);
+    });
+  });
 });

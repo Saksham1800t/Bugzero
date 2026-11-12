@@ -39,6 +39,15 @@ export const GraphState = Annotation.Root({
           },
     default: () => null,
   }),
+  /**
+   * True when the current attempt's patch could not be applied, so there is nothing new to verify.
+   * Every attempt sets it afresh. (This used to be inferred from a warning left in `logs`, which stayed
+   * there after the failure and made every later attempt skip verification too.)
+   */
+  patchFailed: Annotation<boolean>({
+    reducer: (_, value) => value,
+    default: () => false,
+  }),
   /** Number of fix attempts made so far */
   attempts: Annotation<number>({
     reducer: (_, value) => value,
