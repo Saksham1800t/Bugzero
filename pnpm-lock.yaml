@@ -153,9 +153,17 @@ importers:
         specifier: ^7.2.0
         version: 7.2.0
 
-  packages/patcher: {}
+  packages/patcher:
+    dependencies:
+      '@opspilot/shared':
+        specifier: workspace:*
+        version: link:../shared
 
-  packages/prompts: {}
+  packages/prompts:
+    dependencies:
+      '@opspilot/shared':
+        specifier: workspace:*
+        version: link:../shared
 
   packages/shared: {}
 

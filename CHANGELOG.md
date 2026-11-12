@@ -9,6 +9,15 @@ Entries for releases before 0.0.45 are not written up yet; see the
 
 ## [Unreleased]
 
+### Security
+
+- **File edits and reads are now confined to the project.** A patch whose path left the project
+  (with `../`, an absolute path elsewhere, or a symlink or junction pointing out) could overwrite files
+  outside it, which a manipulated model reply or a hostile project could abuse. Such patches are now
+  refused before any file is changed, and the model is told why so it can correct itself. Absolute paths
+  that point inside the project still work. Separately, a file outside the project that an error log
+  happened to mention could be read and sent to the AI provider; that no longer happens.
+
 ## [0.0.46] - 2026-11-12
 
 ### Fixed

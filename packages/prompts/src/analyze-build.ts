@@ -1,3 +1,4 @@
+import { isInsideDirectory } from "@opspilot/shared";
 import fs from "fs";
 import path from "path";
 import { pathToFileURL } from "url";
@@ -88,7 +89,9 @@ function getContextFiles(logs: string, cwd: string): string {
   for (const candidate of candidates) {
     const absPathCandidate = path.isAbsolute(candidate) ? candidate : path.resolve(cwd, candidate);
     const resolved = resolveExistingPathPrefix(absPathCandidate);
-    if (resolved) {
+    // Logs can mention any path (a dependency's output, a hostile test), so only files
+    // inside the project are ever read and sent to the model.
+    if (resolved && isInsideDirectory(cwd, resolved)) {
       resolvedPaths.add(path.resolve(resolved));
     }
   }

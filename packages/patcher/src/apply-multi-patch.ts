@@ -1,5 +1,5 @@
+import { resolveInsideProject } from "@opspilot/shared";
 import fs from "fs";
-import path from "path";
 import { applyPatch } from "./apply-patch";
 import { MatchStrategy } from "./fuzzy-match";
 
@@ -54,12 +54,27 @@ export function applyPatches(cwd: string, patches: FilePatch[]): MultiPatchResul
     return { success: false, error: "No patches to apply.", applied: [] };
   }
 
+  // Check every path before touching anything: a model-supplied path must stay inside the
+  // project, and one bad path means no file at all is changed.
+  const absolutePaths: string[] = [];
+  for (const patch of patches) {
+    const resolved = resolveInsideProject(cwd, patch.filePath);
+    if (!resolved.ok) {
+      return {
+        success: false,
+        error: `Failed to patch "${patch.filePath}": ${resolved.error}`,
+        applied: [],
+      };
+    }
+    absolutePaths.push(resolved.absolutePath);
+  }
+
   const originalContent = new Map<string, string>();
   const backupPaths = new Set<string>();
   const applied: AppliedFilePatch[] = [];
 
-  for (const patch of patches) {
-    const absolutePath = path.resolve(cwd, patch.filePath);
+  for (const [index, patch] of patches.entries()) {
+    const absolutePath = absolutePaths[index];
 
     if (!originalContent.has(absolutePath)) {
       try {

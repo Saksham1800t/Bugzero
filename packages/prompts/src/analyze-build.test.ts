@@ -60,6 +60,57 @@ describe("buildAnalysisPrompt", () => {
     expect(prompt).not.toContain("TAIL_MARKER");
   });
 
+  describe("staying inside the project", () => {
+    let outsideDir: string;
+
+    beforeEach(() => {
+      outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), "bugzero-prompt-outside-test-"));
+      fs.writeFileSync(path.join(outsideDir, "secret.txt"), "SUPER-SECRET-TOKEN-12345");
+    });
+
+    afterEach(() => {
+      fs.rmSync(outsideDir, { recursive: true, force: true });
+    });
+
+    it("does not send a file from outside the project, even if the logs mention it", () => {
+      const logs = `error in index.ts\nsee also "${path.join(outsideDir, "secret.txt")}" for details`;
+
+      const prompt = buildAnalysisPrompt(logs, tmpDir);
+
+      expect(prompt).not.toContain("SUPER-SECRET-TOKEN-12345");
+    });
+
+    it("does not list or read a directory outside the project that the logs mention", () => {
+      const prompt = buildAnalysisPrompt(`failed while reading "${outsideDir}"`, tmpDir);
+
+      expect(prompt).not.toContain("SUPER-SECRET-TOKEN-12345");
+      expect(prompt).not.toContain("secret.txt");
+    });
+
+    it("does not follow a symlinked directory out of the project", (ctx) => {
+      try {
+        fs.symlinkSync(outsideDir, path.join(tmpDir, "link"), process.platform === "win32" ? "junction" : "dir");
+      } catch {
+        ctx.skip();
+      }
+
+      // A source-file extension, so the path finder actually picks this up from the log.
+      fs.writeFileSync(path.join(outsideDir, "secret.ts"), "export const TOKEN = 'SUPER-SECRET-TOKEN-12345';");
+
+      const prompt = buildAnalysisPrompt(`error in link/secret.ts`, tmpDir);
+
+      expect(prompt).not.toContain("SUPER-SECRET-TOKEN-12345");
+    });
+
+    it("still includes a project file that the logs reference by absolute path", () => {
+      fs.writeFileSync(path.join(tmpDir, "inside.ts"), "export const INSIDE_MARKER = 1;");
+
+      const prompt = buildAnalysisPrompt(`error in ${path.join(tmpDir, "inside.ts")}`, tmpDir);
+
+      expect(prompt).toContain("INSIDE_MARKER");
+    });
+  });
+
   it("keeps earlier failed patch attempts in a separate history section", () => {
     const logs =
       "error TS2304: Cannot find name 'foo'.\n\n⚠️ [BugZero System Warning] Your previous patch suggestion failed:\n- File not found";

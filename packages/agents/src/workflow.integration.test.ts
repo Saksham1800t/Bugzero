@@ -78,6 +78,31 @@ describe("repair workflow end to end (fake model, real patcher and pipeline)", (
     expect(state.appliedFix?.rootCause).toBe("b.txt was also broken");
   });
 
+  it("refuses a patch aimed outside the project, then still finishes the repair", async () => {
+    const outsideFile = path.join(path.dirname(projectDir), `bugzero-outside-${path.basename(projectDir)}.txt`);
+    fs.writeFileSync(outsideFile, "state: broken\n");
+    try {
+      const escaping = JSON.stringify({
+        rootCause: "pointed at the wrong place",
+        explanation: "A path outside the project",
+        patches: [{ filePath: path.relative(projectDir, outsideFile), search: "broken", replace: "HACKED" }],
+      });
+      scriptedReplies.push(escaping, reply("a.txt", "a.txt was broken"), reply("b.txt", "b.txt was also broken"));
+
+      const state = await runRepairWorkflow({
+        cwd: projectDir,
+        logs: "error: a.txt is still broken",
+        maxAttempts: 4,
+      });
+
+      expect(fs.readFileSync(outsideFile, "utf8")).toBe("state: broken\n");
+      expect(state.success).toBe(true);
+      expect(state.appliedFix?.patches.map((p) => p.filePath)).toEqual(["a.txt", "b.txt"]);
+    } finally {
+      fs.rmSync(outsideFile, { force: true });
+    }
+  });
+
   it("still verifies and finishes the repair after an early patch fails to apply", async () => {
     const wrongSearch = JSON.stringify({
       rootCause: "guessed the wrong text",

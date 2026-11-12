@@ -104,6 +104,87 @@ describe("applyPatches", () => {
     expect(result.applied).toEqual([]);
   });
 
+  describe("staying inside the project", () => {
+    let outsideDir: string;
+
+    beforeEach(() => {
+      outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), "bugzero-outside-test-"));
+    });
+
+    afterEach(() => {
+      fs.rmSync(outsideDir, { recursive: true, force: true });
+    });
+
+    it("refuses a ../ path that escapes the project and leaves the outside file alone", () => {
+      const outside = path.join(outsideDir, "secret.txt");
+      fs.writeFileSync(outside, "original");
+
+      const result = applyPatches(tmpDir, [
+        { filePath: path.relative(tmpDir, outside), search: "original", replace: "HACKED" },
+      ]);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("outside the project");
+      expect(fs.readFileSync(outside, "utf-8")).toBe("original");
+      expect(fs.existsSync(outside + ".opspilot.bak")).toBe(false);
+    });
+
+    it("refuses an absolute path outside the project", () => {
+      const outside = path.join(outsideDir, "secret.txt");
+      fs.writeFileSync(outside, "original");
+
+      const result = applyPatches(tmpDir, [{ filePath: outside, search: "original", replace: "HACKED" }]);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("outside the project");
+      expect(fs.readFileSync(outside, "utf-8")).toBe("original");
+    });
+
+    it("still accepts an absolute path that points inside the project", () => {
+      write("a.ts", "export const a = 1;");
+
+      const result = applyPatches(tmpDir, [
+        { filePath: path.join(tmpDir, "a.ts"), search: "a = 1", replace: "a = 2" },
+      ]);
+
+      expect(result.success).toBe(true);
+      expect(read("a.ts")).toBe("export const a = 2;");
+    });
+
+    it("checks every path before changing anything", () => {
+      write("a.ts", "export const a = 1;");
+      const outside = path.join(outsideDir, "secret.txt");
+      fs.writeFileSync(outside, "original");
+
+      const result = applyPatches(tmpDir, [
+        { filePath: "a.ts", search: "a = 1", replace: "a = 2" },
+        { filePath: path.relative(tmpDir, outside), search: "original", replace: "HACKED" },
+      ]);
+
+      expect(result.success).toBe(false);
+      expect(read("a.ts")).toBe("export const a = 1;");
+      expect(fs.existsSync(path.join(tmpDir, "a.ts.opspilot.bak"))).toBe(false);
+      expect(fs.readFileSync(outside, "utf-8")).toBe("original");
+    });
+
+    it("refuses a path that goes through a symlinked directory pointing outside", (ctx) => {
+      const outside = path.join(outsideDir, "secret.txt");
+      fs.writeFileSync(outside, "original");
+      try {
+        // A junction needs no special privileges on Windows; a normal symlink does.
+        fs.symlinkSync(outsideDir, path.join(tmpDir, "link"), process.platform === "win32" ? "junction" : "dir");
+      } catch {
+        ctx.skip();
+      }
+
+      const result = applyPatches(tmpDir, [{ filePath: "link/secret.txt", search: "original", replace: "HACKED" }]);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("outside the project");
+      expect(fs.readFileSync(outside, "utf-8")).toBe("original");
+    });
+  });
+
   it("reports the match strategy used for each applied file", () => {
     write("a.ts", ["function add(a, b) {", "    return   a + b;", "}"].join("\n"));
 

@@ -110684,8 +110684,94 @@ var require_dist8 = __commonJS({
   }
 });
 
-// ../../packages/prompts/dist/index.js
+// ../../packages/shared/dist/index.js
 var require_dist9 = __commonJS({
+  "../../packages/shared/dist/index.js"(exports2, module2) {
+    "use strict";
+    var __create2 = Object.create;
+    var __defProp2 = Object.defineProperty;
+    var __getOwnPropDesc2 = Object.getOwnPropertyDescriptor;
+    var __getOwnPropNames2 = Object.getOwnPropertyNames;
+    var __getProtoOf2 = Object.getPrototypeOf;
+    var __hasOwnProp2 = Object.prototype.hasOwnProperty;
+    var __export2 = (target, all) => {
+      for (var name in all)
+        __defProp2(target, name, { get: all[name], enumerable: true });
+    };
+    var __copyProps2 = (to, from, except, desc) => {
+      if (from && typeof from === "object" || typeof from === "function") {
+        for (let key of __getOwnPropNames2(from))
+          if (!__hasOwnProp2.call(to, key) && key !== except)
+            __defProp2(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc2(from, key)) || desc.enumerable });
+      }
+      return to;
+    };
+    var __toESM2 = (mod, isNodeMode, target) => (target = mod != null ? __create2(__getProtoOf2(mod)) : {}, __copyProps2(
+      // If the importer is in node compatibility mode or this is not an ESM
+      // file that has been converted to a CommonJS file using a Babel-
+      // compatible transform (i.e. "__esModule" has not been set), then set
+      // "default" to the CommonJS "module.exports" for node compatibility.
+      isNodeMode || !mod || !mod.__esModule ? __defProp2(target, "default", { value: mod, enumerable: true }) : target,
+      mod
+    ));
+    var __toCommonJS2 = (mod) => __copyProps2(__defProp2({}, "__esModule", { value: true }), mod);
+    var index_exports = {};
+    __export2(index_exports, {
+      isInsideDirectory: () => isInsideDirectory,
+      isLexicallyInside: () => isLexicallyInside,
+      resolveInsideProject: () => resolveInsideProject,
+      uniqueFilePaths: () => uniqueFilePaths2
+    });
+    module2.exports = __toCommonJS2(index_exports);
+    function uniqueFilePaths2(patches) {
+      return [...new Set(patches.map((patch) => patch.filePath))];
+    }
+    var import_fs2 = __toESM2(require("fs"));
+    var import_path2 = __toESM2(require("path"));
+    function isLexicallyInside(root, target) {
+      const relative = import_path2.default.relative(import_path2.default.resolve(root), import_path2.default.resolve(target));
+      const escapes = relative === ".." || relative.startsWith(`..${import_path2.default.sep}`) || import_path2.default.isAbsolute(relative);
+      return !escapes;
+    }
+    function isInsideDirectory(root, target) {
+      const absoluteTarget = import_path2.default.resolve(target);
+      if (!isLexicallyInside(root, absoluteTarget)) return false;
+      try {
+        let probe = absoluteTarget;
+        while (!import_fs2.default.existsSync(probe)) {
+          const parent = import_path2.default.dirname(probe);
+          if (parent === probe) return false;
+          probe = parent;
+        }
+        return isLexicallyInside(import_fs2.default.realpathSync.native(root), import_fs2.default.realpathSync.native(probe));
+      } catch {
+        return false;
+      }
+    }
+    function resolveInsideProject(cwd, filePath) {
+      if (typeof filePath !== "string" || filePath.trim() === "") {
+        return { ok: false, error: "The file path is empty. Use a path relative to the project root." };
+      }
+      if (filePath.includes("\0")) {
+        return { ok: false, error: "The file path contains a null character." };
+      }
+      const absolutePath = import_path2.default.resolve(cwd, filePath);
+      if (import_path2.default.resolve(cwd) === absolutePath) {
+        return { ok: false, error: `"${filePath}" is the project directory itself, not a file.` };
+      }
+      if (!isInsideDirectory(cwd, absolutePath)) {
+        return {
+          ok: false,
+          error: `"${filePath}" is outside the project directory. Use a path relative to the project root.`
+        };
+      }
+      return { ok: true, absolutePath };
+    }
+  }
+});
+
+// ../../packages/prompts/dist/index.js
+var require_dist10 = __commonJS({
   "../../packages/prompts/dist/index.js"(exports2, module2) {
     "use strict";
     var __create2 = Object.create;
@@ -110721,6 +110807,7 @@ var require_dist9 = __commonJS({
       truncateLogs: () => truncateLogs
     });
     module2.exports = __toCommonJS2(index_exports);
+    var import_shared2 = require_dist9();
     var import_fs2 = __toESM2(require("fs"));
     var import_path2 = __toESM2(require("path"));
     var MAX_LOG_CHARS = 2e4;
@@ -110786,7 +110873,7 @@ ${tail}`;
       for (const candidate of candidates) {
         const absPathCandidate = import_path2.default.isAbsolute(candidate) ? candidate : import_path2.default.resolve(cwd, candidate);
         const resolved = resolveExistingPathPrefix(absPathCandidate);
-        if (resolved) {
+        if (resolved && (0, import_shared2.isInsideDirectory)(cwd, resolved)) {
           resolvedPaths.add(import_path2.default.resolve(resolved));
         }
       }
@@ -110932,7 +111019,7 @@ Critical rules:
 });
 
 // ../../packages/patcher/dist/index.js
-var require_dist10 = __commonJS({
+var require_dist11 = __commonJS({
   "../../packages/patcher/dist/index.js"(exports2, module2) {
     "use strict";
     var __create2 = Object.create;
@@ -111096,8 +111183,8 @@ var require_dist10 = __commonJS({
         return { success: false, error: err.message };
       }
     }
+    var import_shared2 = require_dist9();
     var import_fs22 = __toESM2(require("fs"));
-    var import_path22 = __toESM2(require("path"));
     function rollback(originalContent, backupPaths) {
       for (const [absolutePath, content] of originalContent) {
         try {
@@ -111116,11 +111203,23 @@ var require_dist10 = __commonJS({
       if (patches.length === 0) {
         return { success: false, error: "No patches to apply.", applied: [] };
       }
+      const absolutePaths = [];
+      for (const patch of patches) {
+        const resolved = (0, import_shared2.resolveInsideProject)(cwd, patch.filePath);
+        if (!resolved.ok) {
+          return {
+            success: false,
+            error: `Failed to patch "${patch.filePath}": ${resolved.error}`,
+            applied: []
+          };
+        }
+        absolutePaths.push(resolved.absolutePath);
+      }
       const originalContent = /* @__PURE__ */ new Map();
       const backupPaths = /* @__PURE__ */ new Set();
       const applied = [];
-      for (const patch of patches) {
-        const absolutePath = import_path22.default.resolve(cwd, patch.filePath);
+      for (const [index, patch] of patches.entries()) {
+        const absolutePath = absolutePaths[index];
         if (!originalContent.has(absolutePath)) {
           try {
             originalContent.set(absolutePath, import_fs22.default.readFileSync(absolutePath, "utf-8"));
@@ -111156,7 +111255,7 @@ var require_dist10 = __commonJS({
 });
 
 // ../../packages/agents/dist/index.js
-var require_dist11 = __commonJS({
+var require_dist12 = __commonJS({
   "../../packages/agents/dist/index.js"(exports2, module2) {
     "use strict";
     var __defProp2 = Object.defineProperty;
@@ -111265,8 +111364,8 @@ var require_dist11 = __commonJS({
       })
     });
     var import_ai_provider = require_dist8();
-    var import_prompts = require_dist9();
-    var import_patcher = require_dist10();
+    var import_prompts = require_dist10();
+    var import_patcher = require_dist11();
     var import_analyzers = require_dist();
     var provider = new import_ai_provider.OpenRouterProvider();
     async function analyzeNode(state) {
@@ -111374,38 +111473,6 @@ Any other files from that same suggestion were rolled back to keep the change at
   }
 });
 
-// ../../packages/shared/dist/index.js
-var require_dist12 = __commonJS({
-  "../../packages/shared/dist/index.js"(exports2, module2) {
-    "use strict";
-    var __defProp2 = Object.defineProperty;
-    var __getOwnPropDesc2 = Object.getOwnPropertyDescriptor;
-    var __getOwnPropNames2 = Object.getOwnPropertyNames;
-    var __hasOwnProp2 = Object.prototype.hasOwnProperty;
-    var __export2 = (target, all) => {
-      for (var name in all)
-        __defProp2(target, name, { get: all[name], enumerable: true });
-    };
-    var __copyProps2 = (to, from, except, desc) => {
-      if (from && typeof from === "object" || typeof from === "function") {
-        for (let key of __getOwnPropNames2(from))
-          if (!__hasOwnProp2.call(to, key) && key !== except)
-            __defProp2(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc2(from, key)) || desc.enumerable });
-      }
-      return to;
-    };
-    var __toCommonJS2 = (mod) => __copyProps2(__defProp2({}, "__esModule", { value: true }), mod);
-    var index_exports = {};
-    __export2(index_exports, {
-      uniqueFilePaths: () => uniqueFilePaths2
-    });
-    module2.exports = __toCommonJS2(index_exports);
-    function uniqueFilePaths2(patches) {
-      return [...new Set(patches.map((patch) => patch.filePath))];
-    }
-  }
-});
-
 // ../../packages/core/dist/index.js
 var require_dist13 = __commonJS({
   "../../packages/core/dist/index.js"(exports2, module2) {
@@ -111477,8 +111544,8 @@ var require_dist13 = __commonJS({
       return "unknown";
     }
     var import_analyzers = require_dist();
-    var import_agents = require_dist11();
-    var import_shared2 = require_dist12();
+    var import_agents = require_dist12();
+    var import_shared2 = require_dist9();
     var import_fs3 = __toESM2(require("fs"));
     var import_path3 = __toESM2(require("path"));
     var import_url = require("url");
@@ -111879,7 +111946,7 @@ var github = __toESM(require_github());
 var import_fs = __toESM(require("fs"));
 var import_path = __toESM(require("path"));
 var import_core2 = __toESM(require_dist13());
-var import_shared = __toESM(require_dist12());
+var import_shared = __toESM(require_dist9());
 
 // src/open-pull-request.ts
 async function openFixPullRequest(options) {
