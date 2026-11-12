@@ -9,6 +9,8 @@ Entries for releases before 0.0.45 are not written up yet; see the
 
 ## [Unreleased]
 
+## [0.0.47] - 2026-11-13
+
 ### Security
 
 - **File edits and reads are now confined to the project.** A patch whose path left the project
