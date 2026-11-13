@@ -41,6 +41,16 @@ function rollback(originalContent: Map<string, string>, backupPaths: Set<string>
   }
 }
 
+export interface ApplyPatchesOptions {
+  /**
+   * Absolute paths of files whose `.opspilot.bak` already holds their original content because an
+   * earlier batch in the same run patched them. Their backups are left alone, so the backup always
+   * restores what the user had, not the result of an earlier attempt. Any other file gets a fresh
+   * backup (replacing a stale one) the first time it is patched.
+   */
+  alreadyBackedUp?: Iterable<string>;
+}
+
 /**
  * Applies a batch of search-and-replace patches — possibly across multiple
  * files, possibly multiple edits to the same file — as a single atomic
@@ -49,7 +59,11 @@ function rollback(originalContent: Map<string, string>, backupPaths: Set<string>
  * back to its state before the batch started, so a partially-correct
  * multi-file fix is never left half-applied.
  */
-export function applyPatches(cwd: string, patches: FilePatch[]): MultiPatchResult {
+export function applyPatches(
+  cwd: string,
+  patches: FilePatch[],
+  options: ApplyPatchesOptions = {}
+): MultiPatchResult {
   if (patches.length === 0) {
     return { success: false, error: "No patches to apply.", applied: [] };
   }
@@ -72,6 +86,8 @@ export function applyPatches(cwd: string, patches: FilePatch[]): MultiPatchResul
   const originalContent = new Map<string, string>();
   const backupPaths = new Set<string>();
   const applied: AppliedFilePatch[] = [];
+  // Files whose backup holds their original content: from an earlier batch, or written earlier in this one.
+  const backedUp = new Set(options.alreadyBackedUp ?? []);
 
   for (const [index, patch] of patches.entries()) {
     const absolutePath = absolutePaths[index];
@@ -89,8 +105,13 @@ export function applyPatches(cwd: string, patches: FilePatch[]): MultiPatchResul
       }
     }
 
-    const result = applyPatch(absolutePath, patch.search, patch.replace);
-    if (result.backupPath) backupPaths.add(result.backupPath);
+    const needsBackup = !backedUp.has(absolutePath);
+    const result = applyPatch(absolutePath, patch.search, patch.replace, { backup: needsBackup });
+    if (result.success && needsBackup) {
+      backedUp.add(absolutePath);
+      // Only backups created by this batch are cleaned up on rollback; earlier ones must survive.
+      backupPaths.add(result.backupPath!);
+    }
 
     if (!result.success) {
       rollback(originalContent, backupPaths);

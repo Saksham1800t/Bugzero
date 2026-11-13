@@ -111158,7 +111158,7 @@ var require_dist11 = __commonJS({
       }
       return findWhitespaceNormalizedMatch(content, search) ?? findSimilarityMatch(content, search);
     }
-    function applyPatch(absoluteFilePath, search, replace) {
+    function applyPatch(absoluteFilePath, search, replace, options = {}) {
       try {
         if (!import_fs2.default.existsSync(absoluteFilePath)) {
           return {
@@ -111175,7 +111175,9 @@ var require_dist11 = __commonJS({
           };
         }
         const backupPath = absoluteFilePath + ".opspilot.bak";
-        import_fs2.default.writeFileSync(backupPath, original, "utf-8");
+        if (options.backup !== false) {
+          import_fs2.default.writeFileSync(backupPath, original, "utf-8");
+        }
         const fixed = original.slice(0, match.start) + replace + original.slice(match.end);
         import_fs2.default.writeFileSync(absoluteFilePath, fixed, "utf-8");
         return { success: true, backupPath, matchStrategy: match.strategy };
@@ -111199,7 +111201,7 @@ var require_dist11 = __commonJS({
         }
       }
     }
-    function applyPatches(cwd, patches) {
+    function applyPatches(cwd, patches, options = {}) {
       if (patches.length === 0) {
         return { success: false, error: "No patches to apply.", applied: [] };
       }
@@ -111218,6 +111220,7 @@ var require_dist11 = __commonJS({
       const originalContent = /* @__PURE__ */ new Map();
       const backupPaths = /* @__PURE__ */ new Set();
       const applied = [];
+      const backedUp = new Set(options.alreadyBackedUp ?? []);
       for (const [index, patch] of patches.entries()) {
         const absolutePath = absolutePaths[index];
         if (!originalContent.has(absolutePath)) {
@@ -111232,8 +111235,12 @@ var require_dist11 = __commonJS({
             };
           }
         }
-        const result = applyPatch(absolutePath, patch.search, patch.replace);
-        if (result.backupPath) backupPaths.add(result.backupPath);
+        const needsBackup = !backedUp.has(absolutePath);
+        const result = applyPatch(absolutePath, patch.search, patch.replace, { backup: needsBackup });
+        if (result.success && needsBackup) {
+          backedUp.add(absolutePath);
+          backupPaths.add(result.backupPath);
+        }
         if (!result.success) {
           rollback(originalContent, backupPaths);
           return {
@@ -111317,6 +111324,15 @@ var require_dist12 = __commonJS({
           patches: [...previous?.patches ?? [], ...applied.patches]
         },
         default: () => null
+      }),
+      /**
+       * Absolute paths of files whose `.opspilot.bak` already holds their original content, across ALL attempts.
+       * Later attempts leave those backups alone; otherwise a second edit would overwrite the backup with
+       * the first attempt's result and the user's original would be lost.
+       */
+      backedUpFiles: (0, import_langgraph.Annotation)({
+        reducer: (previous, added) => [.../* @__PURE__ */ new Set([...previous, ...added])],
+        default: () => []
       }),
       /**
        * True when the current attempt's patch could not be applied, so there is nothing new to verify.
@@ -111411,7 +111427,7 @@ var require_dist12 = __commonJS({
       const fileList = patches.map((p) => p.filePath).join(", ");
       console.log(`[BugZero] Patching ${patches.length} file${patches.length === 1 ? "" : "s"}: ${fileList}`);
       console.log(`[BugZero] Reason:   ${explanation}`);
-      const result = (0, import_patcher.applyPatches)(state.cwd, patches);
+      const result = (0, import_patcher.applyPatches)(state.cwd, patches, { alreadyBackedUp: state.backedUpFiles });
       if (!result.success) {
         console.error(`[BugZero] Patch failed: ${result.error}`);
         const updatedLogs = `${state.logs}
@@ -111431,7 +111447,11 @@ Any other files from that same suggestion were rolled back to keep the change at
           console.log(`[BugZero] Note: exact match failed for ${applied.filePath} \u2014 patch applied via ${applied.matchStrategy} matching.`);
         }
       }
-      return { appliedFix: state.fixSuggestion, patchFailed: false };
+      return {
+        appliedFix: state.fixSuggestion,
+        backedUpFiles: result.applied.map((applied) => applied.absolutePath),
+        patchFailed: false
+      };
     }
     async function verifyNode(state) {
       if (state.patchFailed) {

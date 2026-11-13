@@ -27,11 +27,14 @@ export interface PatchResult {
  * @param absoluteFilePath - Resolved absolute path to the target file
  * @param search           - Code snippet to find in the file
  * @param replace          - String to substitute in place of the match
+ * @param options.backup   - Set to false to leave the existing backup untouched (default true).
+ *                           Used when the backup already holds the file's original content.
  */
 export function applyPatch(
   absoluteFilePath: string,
   search: string,
-  replace: string
+  replace: string,
+  options: { backup?: boolean } = {}
 ): PatchResult {
   try {
     if (!fs.existsSync(absoluteFilePath)) {
@@ -51,9 +54,11 @@ export function applyPatch(
       };
     }
 
-    // Write backup first
+    // Write backup first (replacing any older one)
     const backupPath = absoluteFilePath + ".opspilot.bak";
-    fs.writeFileSync(backupPath, original, "utf-8");
+    if (options.backup !== false) {
+      fs.writeFileSync(backupPath, original, "utf-8");
+    }
 
     // Apply fix (replace only the matched region to stay minimal)
     const fixed = original.slice(0, match.start) + replace + original.slice(match.end);

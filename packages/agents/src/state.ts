@@ -40,6 +40,15 @@ export const GraphState = Annotation.Root({
     default: () => null,
   }),
   /**
+   * Absolute paths of files whose `.opspilot.bak` already holds their original content, across ALL attempts.
+   * Later attempts leave those backups alone; otherwise a second edit would overwrite the backup with
+   * the first attempt's result and the user's original would be lost.
+   */
+  backedUpFiles: Annotation<string[]>({
+    reducer: (previous, added) => [...new Set([...previous, ...added])],
+    default: () => [],
+  }),
+  /**
    * True when the current attempt's patch could not be applied, so there is nothing new to verify.
    * Every attempt sets it afresh. (This used to be inferred from a warning left in `logs`, which stayed
    * there after the failure and made every later attempt skip verification too.)

@@ -99,7 +99,7 @@ bugzero rescue
 
 ### Safety
 
-- **Backups on every patch.** Each file BugZero modifies gets a `.opspilot.bak` copy of its original content first.
+- **Backups on every patch.** Each file BugZero modifies gets a `.opspilot.bak` copy of its original content first. The backup is written once per run, so it always restores what you had, even if the fix took several attempts. A leftover backup from an earlier run is replaced.
 - **Project boundary.** BugZero only reads and edits files inside the project you point it at. A patch whose path leaves the project (with `../`, an absolute path elsewhere, or a symlink or junction that points out) is refused before any file changes, and the model is told why. Files outside the project are never added to what is sent to the model, even if an error log mentions them.
 - **Dry-run mode.** `bugzero rescue --dry-run` runs validation and error analysis, but makes no fix attempts and never modifies your source files (it still writes a report that diagnoses the failures it found). It exits with code 1 if it found failures and 0 if everything already passes, so you can use it as a check in scripts.
 - **Prompt size limits.** Very long error output and very large source files are shortened before being sent to the model (for logs, the start and end are kept), so a big failure can't exceed the model's context window or waste tokens.

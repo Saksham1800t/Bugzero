@@ -80,7 +80,7 @@ describe("bugzero repair workflow", () => {
     expect(finalState.promptTokens).toBe(100);
     expect(finalState.completionTokens).toBe(50);
 
-    expect(mockApplyPatches).toHaveBeenCalledWith("/project", validFix.patches);
+    expect(mockApplyPatches).toHaveBeenCalledWith("/project", validFix.patches, { alreadyBackedUp: [] });
     expect(mockRunValidationPipeline).toHaveBeenCalledWith("/project", { timeoutMs: undefined });
   });
 
@@ -114,7 +114,7 @@ describe("bugzero repair workflow", () => {
 
     expect(finalState.success).toBe(true);
     expect(finalState.fixSuggestion?.patches).toHaveLength(2);
-    expect(mockApplyPatches).toHaveBeenCalledWith("/project", multiFileFix.patches);
+    expect(mockApplyPatches).toHaveBeenCalledWith("/project", multiFileFix.patches, { alreadyBackedUp: [] });
     expect(mockApplyPatches).toHaveBeenCalledTimes(1);
   });
 
@@ -203,6 +203,20 @@ describe("bugzero repair workflow", () => {
     expect(mockRunValidationPipeline).toHaveBeenCalledTimes(2);
     expect(finalState.promptTokens).toBe(18);
     expect(finalState.completionTokens).toBe(9);
+  });
+
+  it("tells the patcher which files already have their original backed up on later attempts", async () => {
+    mockInvoke.mockResolvedValue(aiResponse(JSON.stringify(validFix)));
+    mockApplyPatches.mockReturnValue({ success: true, applied: [appliedPatch("src/index.ts")] });
+    mockRunValidationPipeline
+      .mockResolvedValueOnce({ success: false, step: "build", output: "still broken" })
+      .mockResolvedValueOnce({ success: true, step: "none", output: "" });
+
+    await workflow.invoke({ cwd: "/project", logs: "err", maxAttempts: 2, attempts: 0, success: false });
+
+    const expected = path.resolve("/project", "src/index.ts");
+    expect(mockApplyPatches.mock.calls[0][2]).toEqual({ alreadyBackedUp: [] });
+    expect(mockApplyPatches.mock.calls[1][2]).toEqual({ alreadyBackedUp: [expected] });
   });
 
   it("stops after maxAttempts without ever succeeding", async () => {

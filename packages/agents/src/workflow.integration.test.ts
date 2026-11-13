@@ -78,6 +78,28 @@ describe("repair workflow end to end (fake model, real patcher and pipeline)", (
     expect(state.appliedFix?.rootCause).toBe("b.txt was also broken");
   });
 
+  it("keeps the original content in the backup when later attempts edit the same file again", async () => {
+    // Attempt 1 fixes a.txt only. Attempt 2 edits a.txt a second time and fixes b.txt.
+    const tweakA = { filePath: "a.txt", search: "FIXED", replace: "FIXED-AGAIN" };
+    const fixB = { filePath: "b.txt", search: "broken", replace: "FIXED" };
+    scriptedReplies.push(
+      reply("a.txt", "a.txt was broken"),
+      JSON.stringify({ rootCause: "b.txt too", explanation: "Second pass", patches: [tweakA, fixB] })
+    );
+
+    const state = await runRepairWorkflow({
+      cwd: projectDir,
+      logs: "error: a.txt is still broken",
+      maxAttempts: 3,
+    });
+
+    expect(state.success).toBe(true);
+    expect(fs.readFileSync(path.join(projectDir, "a.txt"), "utf8")).toBe("state: FIXED-AGAIN\n");
+    // Restoring the backup must bring back what the user had, not the result of attempt 1.
+    expect(fs.readFileSync(path.join(projectDir, "a.txt.opspilot.bak"), "utf8")).toBe("state: broken\n");
+    expect(fs.readFileSync(path.join(projectDir, "b.txt.opspilot.bak"), "utf8")).toBe("state: broken\n");
+  });
+
   it("refuses a patch aimed outside the project, then still finishes the repair", async () => {
     const outsideFile = path.join(path.dirname(projectDir), `bugzero-outside-${path.basename(projectDir)}.txt`);
     fs.writeFileSync(outsideFile, "state: broken\n");

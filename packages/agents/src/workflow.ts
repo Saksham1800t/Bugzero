@@ -62,7 +62,7 @@ async function applyFixNode(state: typeof GraphState.State) {
   console.log(`[BugZero] Patching ${patches.length} file${patches.length === 1 ? "" : "s"}: ${fileList}`);
   console.log(`[BugZero] Reason:   ${explanation}`);
 
-  const result = applyPatches(state.cwd, patches);
+  const result = applyPatches(state.cwd, patches, { alreadyBackedUp: state.backedUpFiles });
   if (!result.success) {
     console.error(`[BugZero] Patch failed: ${result.error}`);
     const updatedLogs = `${state.logs}\n\n⚠️ [BugZero System Warning] Your previous patch suggestion failed with the following error:\n- ${result.error}\n\nAny other files from that same suggestion were rolled back to keep the change atomic. Please check if the file path(s) are correct relative to the project root and make sure you target the correct file(s) that contain the build error.`;
@@ -80,7 +80,11 @@ async function applyFixNode(state: typeof GraphState.State) {
   }
 
   // Record the patches that really reached disk; a failed (rolled-back) attempt returned above and adds nothing.
-  return { appliedFix: state.fixSuggestion, patchFailed: false };
+  return {
+    appliedFix: state.fixSuggestion,
+    backedUpFiles: result.applied.map((applied) => applied.absolutePath),
+    patchFailed: false,
+  };
 }
 
 // ── Node: re-run the pipeline to verify the fix worked ───────────────────

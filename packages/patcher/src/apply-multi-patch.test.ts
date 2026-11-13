@@ -104,6 +104,68 @@ describe("applyPatches", () => {
     expect(result.applied).toEqual([]);
   });
 
+  describe("backups hold the original content", () => {
+    const backupOf = (relPath: string) => path.join(tmpDir, relPath + ".opspilot.bak");
+
+    it("keeps the true original when one batch patches the same file twice", () => {
+      write("a.ts", "let x = 1;\nlet y = 2;");
+
+      const result = applyPatches(tmpDir, [
+        { filePath: "a.ts", search: "let x = 1;", replace: "let x = 10;" },
+        { filePath: "a.ts", search: "let y = 2;", replace: "let y = 20;" },
+      ]);
+
+      expect(result.success).toBe(true);
+      expect(fs.readFileSync(backupOf("a.ts"), "utf-8")).toBe("let x = 1;\nlet y = 2;");
+    });
+
+    it("replaces a stale backup left by an earlier run", () => {
+      write("a.ts", "let x = 1;");
+      fs.writeFileSync(backupOf("a.ts"), "content from some earlier run", "utf-8");
+
+      applyPatches(tmpDir, [{ filePath: "a.ts", search: "let x = 1;", replace: "let x = 2;" }]);
+
+      expect(fs.readFileSync(backupOf("a.ts"), "utf-8")).toBe("let x = 1;");
+    });
+
+    it("does not overwrite the backup of a file that was already backed up earlier in the run", () => {
+      write("a.ts", "let x = 1;");
+      const first = applyPatches(tmpDir, [{ filePath: "a.ts", search: "let x = 1;", replace: "let x = 2;" }]);
+      expect(first.success).toBe(true);
+
+      const second = applyPatches(tmpDir, [{ filePath: "a.ts", search: "let x = 2;", replace: "let x = 3;" }], {
+        alreadyBackedUp: first.applied.map((a) => a.absolutePath),
+      });
+
+      expect(second.success).toBe(true);
+      expect(read("a.ts")).toBe("let x = 3;");
+      expect(fs.readFileSync(backupOf("a.ts"), "utf-8")).toBe("let x = 1;");
+      expect(second.applied[0].backupPath).toBe(backupOf("a.ts"));
+    });
+
+    it("keeps an earlier attempt's backup when a later batch fails and rolls back", () => {
+      write("a.ts", "let x = 1;");
+      write("b.ts", "let b = 1;");
+      const first = applyPatches(tmpDir, [{ filePath: "a.ts", search: "let x = 1;", replace: "let x = 2;" }]);
+
+      const second = applyPatches(
+        tmpDir,
+        [
+          { filePath: "a.ts", search: "let x = 2;", replace: "let x = 3;" },
+          { filePath: "b.ts", search: "this text does not exist", replace: "irrelevant" },
+        ],
+        { alreadyBackedUp: first.applied.map((a) => a.absolutePath) }
+      );
+
+      expect(second.success).toBe(false);
+      // The failed batch is undone, but the backup from the earlier successful attempt must survive.
+      expect(read("a.ts")).toBe("let x = 2;");
+      expect(fs.readFileSync(backupOf("a.ts"), "utf-8")).toBe("let x = 1;");
+      // A file first touched by the failed batch gets no leftover backup.
+      expect(fs.existsSync(backupOf("b.ts"))).toBe(false);
+    });
+  });
+
   describe("staying inside the project", () => {
     let outsideDir: string;
 

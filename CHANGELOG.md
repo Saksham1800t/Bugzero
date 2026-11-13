@@ -9,6 +9,15 @@ Entries for releases before 0.0.45 are not written up yet; see the
 
 ## [Unreleased]
 
+### Fixed
+
+- **`.opspilot.bak` now always holds your original file.** The backup was rewritten every time a file
+  was patched, so when a fix took more than one edit to the same file (two edits in one reply, or
+  edits on separate attempts) the backup ended up holding an intermediate, already-patched version and
+  your original was lost. A file is now backed up once per run, the first time it is patched, and later
+  edits leave that backup alone. A leftover backup from an earlier run is still replaced. If a later
+  attempt fails and is rolled back, the backups from earlier successful attempts are kept.
+
 ## [0.0.47] - 2026-11-13
 
 ### Security
