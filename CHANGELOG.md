@@ -9,6 +9,8 @@ Entries for releases before 0.0.45 are not written up yet; see the
 
 ## [Unreleased]
 
+## [0.0.48] - 2026-11-13
+
 ### Fixed
 
 - **`.opspilot.bak` now always holds your original file.** The backup was rewritten every time a file
