@@ -9,6 +9,18 @@ Entries for releases before 0.0.45 are not written up yet; see the
 
 ## [Unreleased]
 
+### Internal
+
+- **CI now tests Node 20, 22 and 24 on Linux, Windows and macOS** (it used to run only Node 20 on Linux),
+  plus Node 22.12.0 on Linux, the oldest version `engines` promises. All 10 combinations pass, so the
+  `>=22.12.0` requirement is confirmed and stays as it is. Node 20 also passes, but it is end-of-life and
+  is not promised.
+- CI installs pnpm with `pnpm/action-setup` instead of `corepack enable`. The Corepack bundled with
+  Node 22.12.0 cannot verify current pnpm downloads, which made that combination fail before any
+  BugZero code ran.
+
+No change to the published package, so no new npm release.
+
 ## [0.0.49] - 2026-11-15
 
 ### Fixed

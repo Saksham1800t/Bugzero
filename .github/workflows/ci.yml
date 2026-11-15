@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, test-on-more-node-versions-and-oses]
+    branches: [main]
   pull_request:
     branches: [main]
 
@@ -15,6 +15,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
+        # Node 20 is end-of-life and not promised by "engines"; it is kept as an early warning.
         node: [20, 22, 24]
         include:
           # The oldest Node that "engines" in apps/bugzero/package.json promises to support.
