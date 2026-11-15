@@ -24,19 +24,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # pnpm comes from the "packageManager" field. This is used instead of `corepack enable` because the
+      # Corepack bundled with Node 22.12.0 cannot verify current pnpm downloads and fails to install it.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
 
-      - name: Enable Corepack (pnpm)
-        run: corepack enable
-
       - name: Install dependencies
-        shell: bash
-        run: |
-          pnpm --version 2>&1 | tee out.txt || true
-          pnpm install --frozen-lockfile 2>&1 | tee -a out.txt || { echo "::error::$(tail -c 900 out.txt | tr -s '[:space:]' ' ')"; exit 1; }
+        run: pnpm install --frozen-lockfile
 
       - name: Build all packages
         run: pnpm build
