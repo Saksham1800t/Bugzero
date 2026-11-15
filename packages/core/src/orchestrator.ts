@@ -73,7 +73,8 @@ export async function orchestrateAndFix(
       success: true,
       attempts: 0,
       maxAttempts,
-      rawOutput: ""
+      rawOutput: "",
+      alreadyPassing: true,
     });
     return { success: true, attempts: 0, finalOutput: "" };
   }
@@ -165,6 +166,8 @@ async function writeReport(
     error?: string;
     /** True when the run was a dry run, so the report describes analysis rather than a failed repair. */
     dryRun?: boolean;
+    /** True when everything already passed, so there was nothing to repair and no AI call is needed. */
+    alreadyPassing?: boolean;
     build?: any;
     lint?: any;
     test?: any;
@@ -242,7 +245,19 @@ ${logs}
   } else {
     const { success, attempts, maxAttempts, appliedFix, error, rawOutput, modelUsed, promptTokens, completionTokens } = data;
     
-    if (data.dryRun) {
+    if (data.alreadyPassing) {
+      content = `# 🤖 BugZero Rescue Report
+
+**Date:** ${new Date().toLocaleString()}
+**Project Path:** \`${cwd}\`
+**Framework:** \`${detectFramework(cwd)}\`
+
+## 📊 Repair Summary
+- **Status:** ✅ Nothing to fix
+- **Attempts:** 0 / ${maxAttempts}
+
+Your project already passes its build, lint, and tests, so BugZero made no changes and did not call an AI model.`;
+    } else if (data.dryRun) {
       console.log("[BugZero] Calling AI to diagnose the detected errors and write report...");
       try {
         const result = await provider.invoke(buildDryRunPrompt(cwd, rawOutput ?? ""), { cwd });

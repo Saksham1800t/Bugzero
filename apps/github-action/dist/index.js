@@ -111672,7 +111672,8 @@ Re-run without \`--dry-run\` to let BugZero attempt a fix.
           success: true,
           attempts: 0,
           maxAttempts,
-          rawOutput: ""
+          rawOutput: "",
+          alreadyPassing: true
         });
         return { success: true, attempts: 0, finalOutput: "" };
       }
@@ -111824,7 +111825,19 @@ ${logs}
         }
       } else {
         const { success, attempts, maxAttempts, appliedFix, error, rawOutput, modelUsed, promptTokens, completionTokens } = data;
-        if (data.dryRun) {
+        if (data.alreadyPassing) {
+          content = `# \u{1F916} BugZero Rescue Report
+
+**Date:** ${(/* @__PURE__ */ new Date()).toLocaleString()}
+**Project Path:** \`${cwd}\`
+**Framework:** \`${detectFramework(cwd)}\`
+
+## \u{1F4CA} Repair Summary
+- **Status:** \u2705 Nothing to fix
+- **Attempts:** 0 / ${maxAttempts}
+
+Your project already passes its build, lint, and tests, so BugZero made no changes and did not call an AI model.`;
+        } else if (data.dryRun) {
           console.log("[BugZero] Calling AI to diagnose the detected errors and write report...");
           try {
             const result = await provider.invoke(buildDryRunPrompt(cwd, rawOutput ?? ""), { cwd });
