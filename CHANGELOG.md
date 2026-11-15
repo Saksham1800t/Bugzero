@@ -9,6 +9,15 @@ Entries for releases before 0.0.45 are not written up yet; see the
 
 ## [Unreleased]
 
+## [0.0.49] - 2026-11-15
+
+### Fixed
+
+- **`rescue` no longer calls the AI model when your project already passes.** It used to send an
+  empty error log to the model to "analyze unresolved errors", which cost tokens for nothing. Without
+  an API key that call failed, and `bugzero-report.md` then said "Could not repair automatically" for a
+  project that was fine. The report now says nothing needed fixing, and no model is called.
+
 ## [0.0.48] - 2026-11-13
 
 ### Fixed
