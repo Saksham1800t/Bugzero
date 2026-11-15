@@ -36,8 +36,7 @@ jobs:
         shell: bash
         run: |
           pnpm --version 2>&1 | tee out.txt || true
-          pnpm install --frozen-lockfile 2>&1 | tee -a out.txt || { echo "::error::$(tail -c 900 out.txt | tr "
-" " ")"; exit 1; }
+          pnpm install --frozen-lockfile 2>&1 | tee -a out.txt || { echo "::error::$(tail -c 900 out.txt | tr -s '[:space:]' ' ')"; exit 1; }
 
       - name: Build all packages
         run: pnpm build
