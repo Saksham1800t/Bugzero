@@ -300,7 +300,7 @@ BugZero provides clear, actionable output for common failure modes:
 Clone the repository and install dependencies. This project uses a pnpm monorepo managed by Turborepo, with a Vitest test suite and GitHub Actions CI.
 
 ### Prerequisites
-- Node.js 22.12 or later
+- Node.js 22.12 or later (CI runs the tests on Linux, Windows and macOS with Node 22.12, 22 and 24)
 - pnpm
 
 ### Install & build

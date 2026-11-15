@@ -8,18 +8,32 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    name: ${{ matrix.os }} / Node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Let every cell finish, so one failure doesn't hide the others.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        # Node 20 is end-of-life and not promised by "engines"; it is kept as an early warning.
+        node: [20, 22, 24]
+        include:
+          # The oldest Node that "engines" in apps/bugzero/package.json promises to support.
+          - os: ubuntu-latest
+            node: 22.12.0
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # pnpm comes from the "packageManager" field. This is used instead of `corepack enable` because the
+      # Corepack bundled with Node 22.12.0 cannot verify current pnpm downloads and fails to install it.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-
-      - name: Enable Corepack (pnpm)
-        run: corepack enable
+          node-version: ${{ matrix.node }}
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
