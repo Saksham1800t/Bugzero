@@ -2,13 +2,24 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, test-on-more-node-versions-and-oses]
   pull_request:
     branches: [main]
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    name: ${{ matrix.os }} / Node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Let every cell finish, so one failure doesn't hide the others.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: [20, 22, 24]
+        include:
+          # The oldest Node that "engines" in apps/bugzero/package.json promises to support.
+          - os: ubuntu-latest
+            node: 22.12.0
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -16,7 +27,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ matrix.node }}
 
       - name: Enable Corepack (pnpm)
         run: corepack enable
