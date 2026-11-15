@@ -9,6 +9,17 @@ Entries for releases before 0.0.45 are not written up yet; see the
 
 ## [Unreleased]
 
+## [0.0.50] - 2026-11-17
+
+### Fixed
+
+- **`--path` now loads that project's `.env`.** BugZero only looked for `.env` in the folder you ran
+  the command from, so `bugzero rescue --path ../app` ignored `../app/.env` (the docs and the "missing
+  key" message both said the project you are targeting). `hunt` and `rescue` now load the closest `.env`
+  at or above the `--path` folder. A variable already set in your shell still wins over any file, and the
+  target project's `.env` wins over one in the folder you ran the command from. Running without `--path`
+  behaves as before. This also means the project's build, lint and test commands see its `.env` values.
+
 ### Internal
 
 - **CI now tests Node 20, 22 and 24 on Linux, Windows and macOS** (it used to run only Node 20 on Linux),
@@ -18,8 +29,6 @@ Entries for releases before 0.0.45 are not written up yet; see the
 - CI installs pnpm with `pnpm/action-setup` instead of `corepack enable`. The Corepack bundled with
   Node 22.12.0 cannot verify current pnpm downloads, which made that combination fail before any
   BugZero code ran.
-
-No change to the published package, so no new npm release.
 
 ## [0.0.49] - 2026-11-15
 

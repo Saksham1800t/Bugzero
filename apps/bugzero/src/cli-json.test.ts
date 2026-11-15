@@ -33,16 +33,36 @@ describe.skipIf(!fs.existsSync(CLI))("bugzero CLI --json", () => {
     );
   }
 
-  function run(...args: string[]) {
+  function runFrom(cwd: string, ...args: string[]) {
+    const env: NodeJS.ProcessEnv = { ...process.env, OPENROUTER_API_KEY: "" };
+    delete env.BUGZERO_TEST; // only the project's .env may provide it
     const result = spawnSync(process.execPath, [CLI, ...args], {
-      cwd: tmpDir,
+      cwd,
       encoding: "utf8",
       timeout: 60_000,
       // An empty key makes any AI call fail instantly and offline, so the report falls back to its template.
-      env: { ...process.env, OPENROUTER_API_KEY: "" },
+      env,
     });
     return { stdout: result.stdout, stderr: result.stderr, status: result.status };
   }
+
+  function run(...args: string[]) {
+    return runFrom(tmpDir, ...args);
+  }
+
+  it("reads the .env of the --path project, not the folder the command was started from", () => {
+    // The build only passes when BUGZERO_TEST (set in the project's .env) reaches it.
+    makeProject(`node -e "process.exit(process.env.BUGZERO_TEST ? 0 : 1)"`);
+    const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), "bugzero-cli-elsewhere-"));
+    try {
+      const { stdout, status } = runFrom(elsewhere, "rescue", "--path", tmpDir, "--json");
+
+      expect(JSON.parse(stdout)).toMatchObject({ outcome: "already-passing", success: true });
+      expect(status).toBe(0);
+    } finally {
+      fs.rmSync(elsewhere, { recursive: true, force: true });
+    }
+  });
 
   it("--version prints only the version, even when the project has a .env", () => {
     const { version } = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), "apps/bugzero/package.json"), "utf8"));

@@ -183,10 +183,12 @@ export OPENROUTER_API_KEY="your_openrouter_api_key_here"
 $env:OPENROUTER_API_KEY="your_openrouter_api_key_here"
 ```
 
-**Or** create a `.env` file in the project root you are targeting:
+**Or** create a `.env` file in the project you are targeting (the folder you pass with `--path`, or the current folder if you don't):
 ```env
 OPENROUTER_API_KEY=your_openrouter_api_key_here
 ```
+
+BugZero uses the closest `.env` at or above that folder. A variable already set in your shell always wins over the file, and the target project's `.env` wins over one in the folder you ran the command from.
 
 ---
 

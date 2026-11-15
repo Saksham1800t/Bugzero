@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import "@opspilot/config"; // loads .env before anything else
+import { loadProjectEnv } from "@opspilot/config"; // also loads the current folder's .env before anything else
 import { Command } from "commander";
 import fs from "fs";
 import path from "path";
@@ -64,6 +64,7 @@ program
     if (json) routeLogsToStderr();
     try {
       const cwd = path.resolve(opts.path);
+      loadProjectEnv(cwd);
       const timeoutSeconds = parseTimeout(opts.timeout);
       const framework = detectFramework(cwd);
       const packageManager = detectPackageManager(cwd);
@@ -116,6 +117,7 @@ program
     if (json) routeLogsToStderr();
     try {
       const cwd = path.resolve(opts.path);
+      loadProjectEnv(cwd);
       const maxAttempts = resolveMaxAttempts(Number(opts.maxAttempts));
       const timeoutSeconds = parseTimeout(opts.timeout);
       const dryRun: boolean = opts.dryRun;
