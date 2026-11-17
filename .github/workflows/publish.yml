@@ -8,6 +8,7 @@ on:
     branches: [main]
     paths:
       - "apps/bugzero/package.json"
+      - ".github/workflows/publish.yml"
   workflow_dispatch: {}
 
 jobs:
@@ -52,7 +53,13 @@ jobs:
       - name: Publish bugzero to npm
         if: steps.version.outputs.changed == 'true'
         working-directory: apps/bugzero
-        run: npm publish --access public
+        shell: bash
+        # The error is repeated as an annotation, because job logs are not visible without signing in.
+        run: |
+          npm publish --access public 2>&1 | tee "$RUNNER_TEMP/npm-publish.txt" || {
+            echo "::error::npm publish failed: $(tail -c 900 "$RUNNER_TEMP/npm-publish.txt" | tr -s "[:space:]" " ")"
+            exit 1
+          }
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
