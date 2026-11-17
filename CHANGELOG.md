@@ -9,6 +9,22 @@ Entries for releases before 0.0.45 are not written up yet; see the
 
 ## [Unreleased]
 
+### Fixed
+
+- **The AI-written reports no longer send unlimited log text to the model.** `hunt`, a `rescue` that
+  could not fix the project, and `rescue --dry-run` put the raw error output into the report prompt
+  with no size limit, so a huge failing run (thousands of test failures, a giant stack trace) was sent
+  whole, costing tokens and risking the model's context window. Logs are now capped at about 20,000
+  characters per prompt, keeping the start and the end and saying how much was left out. `hunt` shares
+  that budget between the failing checks, so one noisy check cannot push the others out. The full
+  output is still in the fallback report written when no AI call is possible. Logs under the limit are
+  sent exactly as before.
+
+### Internal
+
+- The three report prompts moved out of `orchestrator.ts` into `report-prompts.ts` as plain functions
+  with tests. Their wording is unchanged and is pinned by snapshot tests.
+
 ## [0.0.51] - 2026-11-17
 
 ### Fixed

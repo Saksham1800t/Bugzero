@@ -111590,6 +111590,72 @@ var require_dist13 = __commonJS({
     var import_fs3 = __toESM2(require("fs"));
     var import_path3 = __toESM2(require("path"));
     var import_url = require("url");
+    var import_prompts = require_dist10();
+    var import_shared3 = require_dist9();
+    var MAX_REPORT_LOG_CHARS = 2e4;
+    function capReportLogs(logs, maxChars = MAX_REPORT_LOG_CHARS) {
+      return (0, import_prompts.truncateLogs)(logs, maxChars);
+    }
+    function buildHuntDiagnosisPrompt(checks) {
+      const sections = [
+        { label: "BUILD FAILURE", check: checks.build },
+        { label: "LINT FAILURE", check: checks.lint },
+        { label: "TEST FAILURE", check: checks.test }
+      ].filter((section) => !section.check.success);
+      const share = Math.floor(MAX_REPORT_LOG_CHARS / Math.max(sections.length, 1));
+      const logs = sections.map((section) => `[${section.label}]
+${capReportLogs(section.check.output ?? "", share)}
+
+`).join("");
+      return `You are an expert software engineer assistant. Below is the error output from a project's build, lint, and test checks.
+Please analyze the errors and generate a professional, beautifully formatted Markdown report summarizing:
+1. **Diagnosis:** Clear explanation of what failed and why.
+2. **Root Cause:** The underlying issue in the code/config.
+3. **Action Plan:** Step-by-step instructions on what files need to be modified and what exact changes to make.
+
+Failed Checks Logs:
+${logs}
+
+Generate the Markdown report directly. Do not wrap it in markdown block fences (\`\`\`markdown ... \`\`\`). Just write the markdown text directly.`;
+    }
+    function formatPatchesForPrompt(appliedFix) {
+      return appliedFix.patches.map(
+        (p, i) => `File ${i + 1}: ${p.filePath}
+- Search code:
+${p.search}
+- Replace code:
+${p.replace}`
+      ).join("\n\n");
+    }
+    function buildRescueSuccessPrompt(params) {
+      const { cwd, attempts, appliedFix } = params;
+      const patchedFiles = (0, import_shared3.uniqueFilePaths)(appliedFix.patches).join(", ");
+      return `You are an expert software engineer assistant. An automated AI agent successfully resolved a build/lint/test failure in a project located at "${cwd}" after ${attempts} attempts by applying a patch to: ${patchedFiles}.
+Here is the patch details:
+- Root Cause: ${appliedFix.rootCause}
+- Explanation: ${appliedFix.explanation}
+${formatPatchesForPrompt(appliedFix)}
+
+Please generate a professional, beautifully formatted Markdown report summarizing:
+1. **Repair Summary:** Celebrate the success and explain the fix.
+2. **Details of the Solution:** Walk the developer through what was changed and why.
+3. **Verification:** Explain how it was verified (build, lint, tests passed).
+
+Generate the Markdown report directly. Do not wrap it in markdown block fences (\`\`\`markdown ... \`\`\`). Just write the markdown text directly.`;
+    }
+    function buildRescueFailurePrompt(params) {
+      const { cwd, attempts, rawOutput } = params;
+      return `You are an expert software engineer assistant. An automated AI agent tried to repair build/lint/test errors in a project located at "${cwd}", but could not resolve them after ${attempts} attempts.
+Below is the unresolved error logs.
+Please analyze these logs and generate a professional, beautifully formatted Markdown report summarizing:
+1. **Analysis of Unresolved Errors:** Explain why the AI fixes might have failed or what is still unresolved.
+2. **Manual Action Plan:** Provide detailed, step-by-step instructions for the developer on how to fix this manually.
+
+Unresolved Error Logs:
+${capReportLogs(rawOutput ?? "")}
+
+Generate the Markdown report directly. Do not wrap it in markdown block fences (\`\`\`markdown ... \`\`\`). Just write the markdown text directly.`;
+    }
     function buildDryRunPrompt(cwd, rawOutput) {
       return `You are an expert software engineer assistant. BugZero ran in dry-run mode on the project located at "${cwd}": it ran the project's build/lint/test checks and found failures, but it intentionally attempted NO fixes and modified NO files.
 Below is the error output.
@@ -111599,7 +111665,7 @@ Please analyze these logs and generate a professional, beautifully formatted Mar
 3. **Suggested Fix:** Step-by-step instructions on what files need to be modified and what exact changes to make.
 
 Error Logs:
-${rawOutput}
+${capReportLogs(rawOutput)}
 
 Generate the Markdown report directly. Do not wrap it in markdown block fences (\`\`\`markdown ... \`\`\`). Just write the markdown text directly.`;
     }
@@ -111746,15 +111812,6 @@ Re-run without \`--dry-run\` to let BugZero attempt a fix.
       });
       return result;
     }
-    function formatPatchesForPrompt(appliedFix) {
-      return appliedFix.patches.map(
-        (p, i) => `File ${i + 1}: ${p.filePath}
-- Search code:
-${p.search}
-- Replace code:
-${p.replace}`
-      ).join("\n\n");
-    }
     function formatPatchesMarkdown(appliedFix) {
       return appliedFix.patches.map(
         (p) => `**File:** \`${p.filePath}\`
@@ -111790,16 +111847,7 @@ ${test.output}
 
 `;
           console.log("[BugZero] Calling AI to diagnose errors and write report...");
-          const prompt = `You are an expert software engineer assistant. Below is the error output from a project's build, lint, and test checks.
-Please analyze the errors and generate a professional, beautifully formatted Markdown report summarizing:
-1. **Diagnosis:** Clear explanation of what failed and why.
-2. **Root Cause:** The underlying issue in the code/config.
-3. **Action Plan:** Step-by-step instructions on what files need to be modified and what exact changes to make.
-
-Failed Checks Logs:
-${logs}
-
-Generate the Markdown report directly. Do not wrap it in markdown block fences (\`\`\`markdown ... \`\`\`). Just write the markdown text directly.`;
+          const prompt = buildHuntDiagnosisPrompt({ build, lint, test });
           try {
             const result = await provider.invoke(prompt, { cwd });
             content = result.content;
@@ -111873,19 +111921,7 @@ Your project already passes its build, lint, and tests, so BugZero made no chang
           }
         } else if (success && appliedFix) {
           console.log("[BugZero] Calling AI to write solution summary report...");
-          const patchedFiles = (0, import_shared2.uniqueFilePaths)(appliedFix.patches).join(", ");
-          const prompt = `You are an expert software engineer assistant. An automated AI agent successfully resolved a build/lint/test failure in a project located at "${cwd}" after ${attempts} attempts by applying a patch to: ${patchedFiles}.
-Here is the patch details:
-- Root Cause: ${appliedFix.rootCause}
-- Explanation: ${appliedFix.explanation}
-${formatPatchesForPrompt(appliedFix)}
-
-Please generate a professional, beautifully formatted Markdown report summarizing:
-1. **Repair Summary:** Celebrate the success and explain the fix.
-2. **Details of the Solution:** Walk the developer through what was changed and why.
-3. **Verification:** Explain how it was verified (build, lint, tests passed).
-
-Generate the Markdown report directly. Do not wrap it in markdown block fences (\`\`\`markdown ... \`\`\`). Just write the markdown text directly.`;
+          const prompt = buildRescueSuccessPrompt({ cwd, attempts, appliedFix });
           try {
             const result = await provider.invoke(prompt, { cwd });
             content = result.content;
@@ -111921,16 +111957,7 @@ ${formatPatchesMarkdown(appliedFix)}
           }
         } else {
           console.log("[BugZero] Calling AI to analyze unresolved errors and write report...");
-          const prompt = `You are an expert software engineer assistant. An automated AI agent tried to repair build/lint/test errors in a project located at "${cwd}", but could not resolve them after ${attempts} attempts.
-Below is the unresolved error logs.
-Please analyze these logs and generate a professional, beautifully formatted Markdown report summarizing:
-1. **Analysis of Unresolved Errors:** Explain why the AI fixes might have failed or what is still unresolved.
-2. **Manual Action Plan:** Provide detailed, step-by-step instructions for the developer on how to fix this manually.
-
-Unresolved Error Logs:
-${rawOutput}
-
-Generate the Markdown report directly. Do not wrap it in markdown block fences (\`\`\`markdown ... \`\`\`). Just write the markdown text directly.`;
+          const prompt = buildRescueFailurePrompt({ cwd, attempts, rawOutput });
           try {
             const result = await provider.invoke(prompt, { cwd });
             content = result.content;

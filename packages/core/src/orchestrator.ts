@@ -9,6 +9,7 @@ import { buildDryRunFallbackReport, buildDryRunMetadata, buildDryRunPrompt } fro
 import { resolveMaxAttempts, resolveTimeoutMs } from "./options";
 import { assertNodeProject } from "./project-check";
 import { OpenRouterProvider } from "@opspilot/ai-provider";
+import { buildHuntDiagnosisPrompt, buildRescueFailurePrompt, buildRescueSuccessPrompt } from "./report-prompts";
 
 /** Name of the Markdown report written into the target project by `hunt` and `rescue`. */
 export const REPORT_FILENAME = "bugzero-report.md";
@@ -137,15 +138,6 @@ export async function orchestrateAndFix(
   return result;
 }
 
-function formatPatchesForPrompt(appliedFix: { patches: { filePath: string; search: string; replace: string }[] }): string {
-  return appliedFix.patches
-    .map(
-      (p, i) =>
-        `File ${i + 1}: ${p.filePath}\n- Search code:\n${p.search}\n- Replace code:\n${p.replace}`
-    )
-    .join("\n\n");
-}
-
 function formatPatchesMarkdown(appliedFix: { patches: { filePath: string; search: string; replace: string }[] }): string {
   return appliedFix.patches
     .map(
@@ -192,16 +184,7 @@ async function writeReport(
       if (!test.success) logs += `[TEST FAILURE]\n${test.output}\n\n`;
 
       console.log("[BugZero] Calling AI to diagnose errors and write report...");
-      const prompt = `You are an expert software engineer assistant. Below is the error output from a project's build, lint, and test checks.
-Please analyze the errors and generate a professional, beautifully formatted Markdown report summarizing:
-1. **Diagnosis:** Clear explanation of what failed and why.
-2. **Root Cause:** The underlying issue in the code/config.
-3. **Action Plan:** Step-by-step instructions on what files need to be modified and what exact changes to make.
-
-Failed Checks Logs:
-${logs}
-
-Generate the Markdown report directly. Do not wrap it in markdown block fences (\`\`\`markdown ... \`\`\`). Just write the markdown text directly.`;
+      const prompt = buildHuntDiagnosisPrompt({ build, lint, test });
       
       try {
         const result = await provider.invoke(prompt, { cwd });
@@ -272,19 +255,7 @@ Your project already passes its build, lint, and tests, so BugZero made no chang
       }
     } else if (success && appliedFix) {
       console.log("[BugZero] Calling AI to write solution summary report...");
-      const patchedFiles = uniqueFilePaths(appliedFix.patches).join(", ");
-      const prompt = `You are an expert software engineer assistant. An automated AI agent successfully resolved a build/lint/test failure in a project located at "${cwd}" after ${attempts} attempts by applying a patch to: ${patchedFiles}.
-Here is the patch details:
-- Root Cause: ${appliedFix.rootCause}
-- Explanation: ${appliedFix.explanation}
-${formatPatchesForPrompt(appliedFix)}
-
-Please generate a professional, beautifully formatted Markdown report summarizing:
-1. **Repair Summary:** Celebrate the success and explain the fix.
-2. **Details of the Solution:** Walk the developer through what was changed and why.
-3. **Verification:** Explain how it was verified (build, lint, tests passed).
-
-Generate the Markdown report directly. Do not wrap it in markdown block fences (\`\`\`markdown ... \`\`\`). Just write the markdown text directly.`;
+      const prompt = buildRescueSuccessPrompt({ cwd, attempts, appliedFix });
 
       try {
         const result = await provider.invoke(prompt, { cwd });
@@ -314,16 +285,7 @@ ${formatPatchesMarkdown(appliedFix)}
       }
     } else {
       console.log("[BugZero] Calling AI to analyze unresolved errors and write report...");
-      const prompt = `You are an expert software engineer assistant. An automated AI agent tried to repair build/lint/test errors in a project located at "${cwd}", but could not resolve them after ${attempts} attempts.
-Below is the unresolved error logs.
-Please analyze these logs and generate a professional, beautifully formatted Markdown report summarizing:
-1. **Analysis of Unresolved Errors:** Explain why the AI fixes might have failed or what is still unresolved.
-2. **Manual Action Plan:** Provide detailed, step-by-step instructions for the developer on how to fix this manually.
-
-Unresolved Error Logs:
-${rawOutput}
-
-Generate the Markdown report directly. Do not wrap it in markdown block fences (\`\`\`markdown ... \`\`\`). Just write the markdown text directly.`;
+      const prompt = buildRescueFailurePrompt({ cwd, attempts, rawOutput });
 
       try {
         const result = await provider.invoke(prompt, { cwd });

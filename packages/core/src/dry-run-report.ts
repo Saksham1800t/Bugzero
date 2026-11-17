@@ -1,3 +1,5 @@
+import { capReportLogs } from "./report-prompts";
+
 interface ReportUsage {
   prompt_tokens: number;
   completion_tokens: number;
@@ -18,7 +20,7 @@ Please analyze these logs and generate a professional, beautifully formatted Mar
 3. **Suggested Fix:** Step-by-step instructions on what files need to be modified and what exact changes to make.
 
 Error Logs:
-${rawOutput}
+${capReportLogs(rawOutput)}
 
 Generate the Markdown report directly. Do not wrap it in markdown block fences (\`\`\`markdown ... \`\`\`). Just write the markdown text directly.`;
 }

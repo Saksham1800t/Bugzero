@@ -146,6 +146,9 @@ importers:
       '@opspilot/analyzers':
         specifier: workspace:*
         version: link:../analyzers
+      '@opspilot/prompts':
+        specifier: workspace:*
+        version: link:../prompts
       '@opspilot/shared':
         specifier: workspace:*
         version: link:../shared

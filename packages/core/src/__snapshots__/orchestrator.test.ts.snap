@@ -1,0 +1,59 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`report prompts > wording > hunt: asks for a diagnosis of every failing check 1`] = `
+"You are an expert software engineer assistant. Below is the error output from a project's build, lint, and test checks.
+Please analyze the errors and generate a professional, beautifully formatted Markdown report summarizing:
+1. **Diagnosis:** Clear explanation of what failed and why.
+2. **Root Cause:** The underlying issue in the code/config.
+3. **Action Plan:** Step-by-step instructions on what files need to be modified and what exact changes to make.
+
+Failed Checks Logs:
+[BUILD FAILURE]
+build boom
+
+[TEST FAILURE]
+2 tests failed
+
+
+
+Generate the Markdown report directly. Do not wrap it in markdown block fences (\`\`\`markdown ... \`\`\`). Just write the markdown text directly."
+`;
+
+exports[`report prompts > wording > rescue that could not fix the project: asks for an analysis of the unresolved errors 1`] = `
+"You are an expert software engineer assistant. An automated AI agent tried to repair build/lint/test errors in a project located at "<project>", but could not resolve them after 3 attempts.
+Below is the unresolved error logs.
+Please analyze these logs and generate a professional, beautifully formatted Markdown report summarizing:
+1. **Analysis of Unresolved Errors:** Explain why the AI fixes might have failed or what is still unresolved.
+2. **Manual Action Plan:** Provide detailed, step-by-step instructions for the developer on how to fix this manually.
+
+Unresolved Error Logs:
+error TS2304: nope
+
+Generate the Markdown report directly. Do not wrap it in markdown block fences (\`\`\`markdown ... \`\`\`). Just write the markdown text directly."
+`;
+
+exports[`report prompts > wording > rescue that fixed the project: asks for a summary of what was changed 1`] = `
+"You are an expert software engineer assistant. An automated AI agent successfully resolved a build/lint/test failure in a project located at "<project>" after 2 attempts by applying a patch to: src/a.ts, src/b.ts.
+Here is the patch details:
+- Root Cause: Missing import
+- Explanation: Added the import
+File 1: src/a.ts
+- Search code:
+foo()
+- Replace code:
+import { foo } from './foo';
+foo()
+
+File 2: src/b.ts
+- Search code:
+bar
+- Replace code:
+baz
+
+Please generate a professional, beautifully formatted Markdown report summarizing:
+1. **Repair Summary:** Celebrate the success and explain the fix.
+2. **Details of the Solution:** Walk the developer through what was changed and why.
+3. **Verification:** Explain how it was verified (build, lint, tests passed).
+
+Generate the Markdown report directly. Do not wrap it in markdown block fences (\`\`\`markdown ... \`\`\`). Just write the markdown text directly."
+`;
