@@ -9,6 +9,17 @@ Entries for releases before 0.0.45 are not written up yet; see the
 
 ## [Unreleased]
 
+## [0.0.51] - 2026-11-17
+
+### Fixed
+
+- **Patches no longer leave Windows files with mixed line endings.** The AI always writes `\n`, so a
+  patch that added lines to a CRLF file inserted bare `\n` breaks in the middle of it (for example a
+  file with 1 CRLF and 3 bare LF after patching). This broke `git diff` noise, linters that enforce one
+  line ending, and sometimes the build itself. The replacement text now takes on the line ending of the
+  lines it replaces, for every matching tier (exact, whitespace and similarity). LF files stay LF, and
+  the rest of a file with mixed endings is left as it was.
+
 ## [0.0.50] - 2026-11-17
 
 ### Fixed

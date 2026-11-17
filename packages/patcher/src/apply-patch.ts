@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { findMatch, MatchStrategy } from "./fuzzy-match";
+import { detectLineEnding, withLineEnding } from "./line-endings";
 
 export interface PatchResult {
   success: boolean;
@@ -60,8 +61,10 @@ export function applyPatch(
       fs.writeFileSync(backupPath, original, "utf-8");
     }
 
-    // Apply fix (replace only the matched region to stay minimal)
-    const fixed = original.slice(0, match.start) + replace + original.slice(match.end);
+    // Apply fix (replace only the matched region to stay minimal). The AI writes "\n" line breaks
+    // whatever the file uses, so give the new text the line ending of the lines it replaces.
+    const replacement = withLineEnding(replace, detectLineEnding(original, match.start, match.end));
+    const fixed = original.slice(0, match.start) + replacement + original.slice(match.end);
     fs.writeFileSync(absoluteFilePath, fixed, "utf-8");
 
     return { success: true, backupPath, matchStrategy: match.strategy };
