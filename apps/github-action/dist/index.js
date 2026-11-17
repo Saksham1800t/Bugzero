@@ -111158,6 +111158,26 @@ var require_dist11 = __commonJS({
       }
       return findWhitespaceNormalizedMatch(content, search) ?? findSimilarityMatch(content, search);
     }
+    var CRLF = "\r\n";
+    var LF = "\n";
+    function countEndings(text) {
+      const crlf = text.split(CRLF).length - 1;
+      const lf = text.split(LF).length - 1 - crlf;
+      return { crlf, lf };
+    }
+    function detectLineEnding(text, start, end) {
+      const inside = countEndings(text.slice(start, end));
+      if (inside.crlf !== inside.lf) return inside.crlf > inside.lf ? CRLF : LF;
+      const nextBreak = text.indexOf(LF, end);
+      if (nextBreak !== -1) return text[nextBreak - 1] === "\r" ? CRLF : LF;
+      const previousBreak = start > 0 ? text.lastIndexOf(LF, start - 1) : -1;
+      if (previousBreak !== -1) return text[previousBreak - 1] === "\r" ? CRLF : LF;
+      const whole = countEndings(text);
+      return whole.crlf > whole.lf ? CRLF : LF;
+    }
+    function withLineEnding(text, ending) {
+      return text.replace(/\r\n|\n/g, ending);
+    }
     function applyPatch(absoluteFilePath, search, replace, options = {}) {
       try {
         if (!import_fs2.default.existsSync(absoluteFilePath)) {
@@ -111178,7 +111198,8 @@ var require_dist11 = __commonJS({
         if (options.backup !== false) {
           import_fs2.default.writeFileSync(backupPath, original, "utf-8");
         }
-        const fixed = original.slice(0, match.start) + replace + original.slice(match.end);
+        const replacement = withLineEnding(replace, detectLineEnding(original, match.start, match.end));
+        const fixed = original.slice(0, match.start) + replacement + original.slice(match.end);
         import_fs2.default.writeFileSync(absoluteFilePath, fixed, "utf-8");
         return { success: true, backupPath, matchStrategy: match.strategy };
       } catch (err) {
