@@ -9,6 +9,8 @@ Entries for releases before 0.0.45 are not written up yet; see the
 
 ## [Unreleased]
 
+## [0.0.52] - 2026-11-17
+
 ### Fixed
 
 - **The AI-written reports no longer send unlimited log text to the model.** `hunt`, a `rescue` that
