@@ -111742,7 +111742,8 @@ Re-run without \`--dry-run\` to let BugZero attempt a fix.
         success: build.success && lint.success && test.success,
         build,
         lint,
-        test
+        test,
+        aiReport: options.aiReport
       });
       return { build, lint, test };
     }
@@ -111846,19 +111847,7 @@ ${lint.output}
 ${test.output}
 
 `;
-          console.log("[BugZero] Calling AI to diagnose errors and write report...");
-          const prompt = buildHuntDiagnosisPrompt({ build, lint, test });
-          try {
-            const result = await provider.invoke(prompt, { cwd });
-            content = result.content;
-            content += `
-
----
-### \u{1F50D} BugZero Hunt Metadata
-- **AI Brain (Model) used for Diagnosis:** \`${result.model || "unknown"}\`
-- **Token Usage for Diagnosis:** ${result.usage ? `Prompt: **${result.usage.prompt_tokens}** | Completion: **${result.usage.completion_tokens}** | Total: **${result.usage.total_tokens}**` : "*N/A*"}`;
-          } catch (e) {
-            content = `# \u{1F50D} BugZero Hunt Report
+          const reportWithoutAi = (modelLine, tokenLine) => `# \u{1F50D} BugZero Hunt Report
 
 **Date:** ${(/* @__PURE__ */ new Date()).toLocaleString()}
 **Project Path:** \`${cwd}\`
@@ -111874,9 +111863,27 @@ ${logs}
 
 ---
 ### \u{1F50D} BugZero Hunt Metadata
-- **AI Brain (Model) used for Diagnosis:** *None (AI call failed)*
-- **Token Usage for Diagnosis:** *N/A (AI call failed: ${e.message})*
+- **AI Brain (Model) used for Diagnosis:** ${modelLine}
+- **Token Usage for Diagnosis:** ${tokenLine}
 `;
+          if (data.aiReport === false) {
+            console.log("[BugZero] AI report turned off (--no-ai-report) \u2014 writing the report without contacting an AI model.");
+            content = reportWithoutAi("*None (AI report turned off)*", "*N/A*");
+          } else {
+            console.log("[BugZero] Calling AI to diagnose errors and write report...");
+            const prompt = buildHuntDiagnosisPrompt({ build, lint, test });
+            try {
+              const result = await provider.invoke(prompt, { cwd });
+              content = result.content;
+              content += `
+
+---
+### \u{1F50D} BugZero Hunt Metadata
+- **AI Brain (Model) used for Diagnosis:** \`${result.model || "unknown"}\`
+- **Token Usage for Diagnosis:** ${result.usage ? `Prompt: **${result.usage.prompt_tokens}** | Completion: **${result.usage.completion_tokens}** | Total: **${result.usage.total_tokens}**` : "*N/A*"}`;
+            } catch (e) {
+              content = reportWithoutAi("*None (AI call failed)*", `*N/A (AI call failed: ${e.message})*`);
+            }
           }
         } else {
           content = `# \u{1F50D} BugZero Hunt Report

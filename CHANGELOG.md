@@ -9,6 +9,21 @@ Entries for releases before 0.0.45 are not written up yet; see the
 
 ## [Unreleased]
 
+## [0.0.53] - 2026-11-19
+
+### Added
+
+- **`bugzero hunt --no-ai-report` runs without contacting an AI model.** When a check fails, `hunt`
+  normally sends the error logs to your AI provider to write the diagnosis in `bugzero-report.md`. With
+  this flag it makes no network call: the report still lists the status of each check and the raw logs,
+  and says the AI report was turned off. Without the flag nothing changes.
+
+### Deprecation notice
+
+- **Planned for 1.0:** `hunt` will stop calling an AI model by default, and the AI diagnosis will
+  become opt-in. The default does not change in this release. If you rely on the AI diagnosis, nothing
+  is needed now; if you want `hunt` to be offline already, use `--no-ai-report`.
+
 ## [0.0.52] - 2026-11-17
 
 ### Fixed

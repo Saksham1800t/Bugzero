@@ -96,6 +96,33 @@ describe.skipIf(!fs.existsSync(CLI))("bugzero CLI --json", () => {
     expect(json.steps.build.output).toContain("boom");
   });
 
+  it("hunt --no-ai-report still reports the failure, and the report says the AI was turned off", () => {
+    makeProject(`node -e "console.error('boom');process.exit(1)"`);
+
+    const { stdout, status } = run("hunt", "--no-ai-report", "--json");
+    const json = JSON.parse(stdout);
+
+    expect(status).toBe(1);
+    expect(json).toMatchObject({ command: "hunt", success: false });
+    const report = fs.readFileSync(path.join(tmpDir, "bugzero-report.md"), "utf8");
+    expect(report).toMatch(/AI report turned off/);
+    expect(report).toContain("boom");
+    expect(report).not.toMatch(/AI call failed/);
+  });
+
+  it("hunt without the flag still tries the AI report (which fails offline here, as before)", () => {
+    makeProject(`node -e "console.error('boom');process.exit(1)"`);
+
+    run("hunt", "--json");
+
+    const report = fs.readFileSync(path.join(tmpDir, "bugzero-report.md"), "utf8");
+    expect(report).toMatch(/AI call failed/);
+  });
+
+  it("lists --no-ai-report in the help for hunt", () => {
+    expect(run("hunt", "--help").stdout).toContain("--no-ai-report");
+  });
+
   it("sends human-readable logs to stderr in --json mode", () => {
     makeProject(`node -e "console.log(1)"`);
 

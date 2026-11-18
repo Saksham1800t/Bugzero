@@ -185,3 +185,56 @@ describe("report prompts", () => {
     });
   });
 });
+
+describe("hunt with --no-ai-report", () => {
+  let projectDir: string;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    projectDir = fs.mkdtempSync(path.join(os.tmpdir(), "bugzero-hunt-offline-test-"));
+    fs.writeFileSync(path.join(projectDir, "package.json"), JSON.stringify({ name: "demo" }));
+    mockInvoke.mockResolvedValue({ content: "AI DIAGNOSIS", model: "m", usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
+    mockRunBuild.mockResolvedValue({ success: false, output: "error TS2304: Cannot find name 'foo'." });
+    mockRunLint.mockResolvedValue({ success: true, output: "" });
+    mockRunTests.mockResolvedValue({ success: false, output: "1 test failed" });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    fs.rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  const report = () => fs.readFileSync(path.join(projectDir, REPORT_FILENAME), "utf-8");
+
+  it("never calls the AI model, even when checks fail", async () => {
+    await orchestrate({ cwd: projectDir, aiReport: false });
+
+    expect(mockInvoke).not.toHaveBeenCalled();
+  });
+
+  it("still writes a report with the status of each check and the raw logs", async () => {
+    const result = await orchestrate({ cwd: projectDir, aiReport: false });
+
+    expect(result.build.success).toBe(false);
+    const text = report();
+    expect(text).toContain("Build:");
+    expect(text).toContain("Cannot find name 'foo'");
+    expect(text).toContain("1 test failed");
+  });
+
+  it("says the AI report was turned off, not that an AI call failed", async () => {
+    await orchestrate({ cwd: projectDir, aiReport: false });
+
+    const text = report();
+    expect(text).toMatch(/turned off/i);
+    expect(text).not.toMatch(/AI call failed/i);
+  });
+
+  it("still calls the AI by default, so existing behaviour is unchanged", async () => {
+    await orchestrate({ cwd: projectDir });
+
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    expect(report()).toContain("AI DIAGNOSIS");
+  });
+});

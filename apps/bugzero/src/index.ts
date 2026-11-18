@@ -58,6 +58,7 @@ program
   .description("Run build, lint, and tests — report issues without modifying files")
   .option("-p, --path <dir>", "Path to the target project", ".")
   .option("-t, --timeout <seconds>", TIMEOUT_DESCRIPTION)
+  .option("--no-ai-report", "Do not contact an AI model: write the report with the raw logs only")
   .option("--json", JSON_DESCRIPTION)
   .action(async (opts) => {
     const json: boolean = opts.json === true;
@@ -76,7 +77,7 @@ program
       if (timeoutSeconds !== undefined) console.log(`   Timeout:   ${timeoutSeconds}s per command`);
       console.log();
 
-      const { build, lint, test } = await orchestrate({ cwd, timeoutSeconds });
+      const { build, lint, test } = await orchestrate({ cwd, timeoutSeconds, aiReport: opts.aiReport });
 
       console.log("── Pipeline Summary ───────────────────────────");
       const label = (r: { success: boolean; skipped?: boolean }) =>

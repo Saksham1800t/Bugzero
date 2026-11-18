@@ -201,6 +201,13 @@ Run build, lint, and test checks. Reports all failures without modifying any fil
 bugzero hunt --path /path/to/your/project
 ```
 
+When a check fails, `hunt` asks an AI model to write the diagnosis in `bugzero-report.md`, which sends your error logs to your AI provider. To keep `hunt` fully offline, add `--no-ai-report`: the report is still written, with the status of each check and the raw logs, and no network call is made.
+```bash
+bugzero hunt --no-ai-report
+```
+
+> **Heads-up for 1.0:** `hunt` will stop calling an AI model by default, and the AI diagnosis will become opt-in. Until then nothing changes unless you pass `--no-ai-report`.
+
 ### `bugzero rescue`
 Run the full AI-powered repair loop. Detects build failures, generates precise code patches, applies them, and verifies the result.
 

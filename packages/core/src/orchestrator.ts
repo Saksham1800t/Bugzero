@@ -28,6 +28,8 @@ export interface OrchestrateOptions {
   dryRun?: boolean;
   /** Stop any build/lint/test command that runs longer than this many seconds (default: no limit) */
   timeoutSeconds?: number;
+  /** `hunt` only: set to false to write the report without contacting an AI model (default: true) */
+  aiReport?: boolean;
 }
 
 /** Run build, lint and tests — return raw results without touching files. */
@@ -45,7 +47,8 @@ export async function orchestrate(options: OrchestrateOptions = {}) {
     success: build.success && lint.success && test.success,
     build,
     lint,
-    test
+    test,
+    aiReport: options.aiReport,
   });
 
   return { build, lint, test };
@@ -160,6 +163,8 @@ async function writeReport(
     dryRun?: boolean;
     /** True when everything already passed, so there was nothing to repair and no AI call is needed. */
     alreadyPassing?: boolean;
+    /** `hunt` only: false means do not contact an AI model for the report. */
+    aiReport?: boolean;
     build?: any;
     lint?: any;
     test?: any;
@@ -183,15 +188,8 @@ async function writeReport(
       if (!lint.success) logs += `[LINT FAILURE]\n${lint.output}\n\n`;
       if (!test.success) logs += `[TEST FAILURE]\n${test.output}\n\n`;
 
-      console.log("[BugZero] Calling AI to diagnose errors and write report...");
-      const prompt = buildHuntDiagnosisPrompt({ build, lint, test });
-      
-      try {
-        const result = await provider.invoke(prompt, { cwd });
-        content = result.content;
-        content += `\n\n---\n### 🔍 BugZero Hunt Metadata\n- **AI Brain (Model) used for Diagnosis:** \`${result.model || "unknown"}\`\n- **Token Usage for Diagnosis:** ${result.usage ? `Prompt: **${result.usage.prompt_tokens}** | Completion: **${result.usage.completion_tokens}** | Total: **${result.usage.total_tokens}**` : "*N/A*"}`;
-      } catch (e: any) {
-        content = `# 🔍 BugZero Hunt Report
+      // The same report without an AI diagnosis, used when the AI is turned off or the call fails.
+      const reportWithoutAi = (modelLine: string, tokenLine: string) => `# 🔍 BugZero Hunt Report
 
 **Date:** ${new Date().toLocaleString()}
 **Project Path:** \`${cwd}\`
@@ -207,9 +205,24 @@ ${logs}
 
 ---
 ### 🔍 BugZero Hunt Metadata
-- **AI Brain (Model) used for Diagnosis:** *None (AI call failed)*
-- **Token Usage for Diagnosis:** *N/A (AI call failed: ${e.message})*
+- **AI Brain (Model) used for Diagnosis:** ${modelLine}
+- **Token Usage for Diagnosis:** ${tokenLine}
 `;
+
+      if (data.aiReport === false) {
+        console.log("[BugZero] AI report turned off (--no-ai-report) — writing the report without contacting an AI model.");
+        content = reportWithoutAi("*None (AI report turned off)*", "*N/A*");
+      } else {
+        console.log("[BugZero] Calling AI to diagnose errors and write report...");
+        const prompt = buildHuntDiagnosisPrompt({ build, lint, test });
+
+        try {
+          const result = await provider.invoke(prompt, { cwd });
+          content = result.content;
+          content += `\n\n---\n### 🔍 BugZero Hunt Metadata\n- **AI Brain (Model) used for Diagnosis:** \`${result.model || "unknown"}\`\n- **Token Usage for Diagnosis:** ${result.usage ? `Prompt: **${result.usage.prompt_tokens}** | Completion: **${result.usage.completion_tokens}** | Total: **${result.usage.total_tokens}**` : "*N/A*"}`;
+        } catch (e: any) {
+          content = reportWithoutAi("*None (AI call failed)*", `*N/A (AI call failed: ${e.message})*`);
+        }
       }
     } else {
       content = `# 🔍 BugZero Hunt Report
