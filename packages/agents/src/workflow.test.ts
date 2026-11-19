@@ -80,7 +80,7 @@ describe("bugzero repair workflow", () => {
     expect(finalState.promptTokens).toBe(100);
     expect(finalState.completionTokens).toBe(50);
 
-    expect(mockApplyPatches).toHaveBeenCalledWith("/project", validFix.patches, { alreadyBackedUp: [] });
+    expect(mockApplyPatches).toHaveBeenCalledWith("/project", validFix.patches, expect.objectContaining({ alreadyBackedUp: [] }));
     expect(mockRunValidationPipeline).toHaveBeenCalledWith("/project", { timeoutMs: undefined });
   });
 
@@ -114,7 +114,7 @@ describe("bugzero repair workflow", () => {
 
     expect(finalState.success).toBe(true);
     expect(finalState.fixSuggestion?.patches).toHaveLength(2);
-    expect(mockApplyPatches).toHaveBeenCalledWith("/project", multiFileFix.patches, { alreadyBackedUp: [] });
+    expect(mockApplyPatches).toHaveBeenCalledWith("/project", multiFileFix.patches, expect.objectContaining({ alreadyBackedUp: [] }));
     expect(mockApplyPatches).toHaveBeenCalledTimes(1);
   });
 
@@ -215,8 +215,21 @@ describe("bugzero repair workflow", () => {
     await workflow.invoke({ cwd: "/project", logs: "err", maxAttempts: 2, attempts: 0, success: false });
 
     const expected = path.resolve("/project", "src/index.ts");
-    expect(mockApplyPatches.mock.calls[0][2]).toEqual({ alreadyBackedUp: [] });
-    expect(mockApplyPatches.mock.calls[1][2]).toEqual({ alreadyBackedUp: [expected] });
+    expect(mockApplyPatches.mock.calls[0][2]).toMatchObject({ alreadyBackedUp: [] });
+    expect(mockApplyPatches.mock.calls[1][2]).toMatchObject({ alreadyBackedUp: [expected] });
+  });
+
+  it("gives the patcher the protected-file rules, so secrets and lockfiles are refused", async () => {
+    mockInvoke.mockResolvedValueOnce(aiResponse(JSON.stringify(validFix)));
+    mockApplyPatches.mockReturnValueOnce({ success: true, applied: [appliedPatch("src/index.ts")] });
+    mockRunValidationPipeline.mockResolvedValueOnce({ success: true, step: "none", output: "" });
+
+    await workflow.invoke({ cwd: "/project", logs: "err", maxAttempts: 1, attempts: 0, success: false });
+
+    const { protection } = mockApplyPatches.mock.calls[0][2];
+    expect(protection.editBlockedBy(".env")).toBeDefined();
+    expect(protection.editBlockedBy("pnpm-lock.yaml")).toBeDefined();
+    expect(protection.editBlockedBy("src/index.ts")).toBeUndefined();
   });
 
   it("stops after maxAttempts without ever succeeding", async () => {

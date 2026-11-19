@@ -57,9 +57,8 @@ export function loadProjectEnv(projectDir: string): string | undefined {
   return applyEnvFile(envPath) ? envPath : undefined;
 }
 
-// Load the .env of the folder the command was started from, so commands that take no `--path` still work.
-// Commands with `--path` call loadProjectEnv() again once they know which project they are targeting.
-loadProjectEnv(process.cwd());
+// Nothing is loaded just by importing this package, so a program that only wants the settings (such as the
+// GitHub Action) does not start reading .env files. The CLI calls loadProjectEnv() itself.
 
 export const env = {
   // Read on access, so a key loaded later by loadProjectEnv() is seen.

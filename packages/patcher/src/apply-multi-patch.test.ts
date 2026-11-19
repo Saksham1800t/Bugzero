@@ -2,6 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createProtectedPathRules } from "@opspilot/shared";
 import { applyPatches } from "./apply-multi-patch";
 
 describe("applyPatches", () => {
@@ -163,6 +164,99 @@ describe("applyPatches", () => {
       expect(fs.readFileSync(backupOf("a.ts"), "utf-8")).toBe("let x = 1;");
       // A file first touched by the failed batch gets no leftover backup.
       expect(fs.existsSync(backupOf("b.ts"))).toBe(false);
+    });
+  });
+
+  describe("protected files", () => {
+    function writeAt(relPath: string, content: string) {
+      const full = path.join(tmpDir, relPath);
+      fs.mkdirSync(path.dirname(full), { recursive: true });
+      fs.writeFileSync(full, content, "utf-8");
+    }
+
+    it.each([".env", "apps/web/.env.local", "pnpm-lock.yaml", ".github/workflows/ci.yml", "certs/server.pem"])(
+      "refuses to edit %s and leaves it unchanged",
+      (file) => {
+        writeAt(file, "value: original");
+
+        const result = applyPatches(tmpDir, [{ filePath: file, search: "original", replace: "CHANGED" }]);
+
+        expect(result.success).toBe(false);
+        expect(result.applied).toEqual([]);
+        expect(result.error).toContain(`"${file}"`);
+        expect(result.error).toMatch(/protected/i);
+        expect(read(file)).toBe("value: original");
+        expect(fs.existsSync(path.join(tmpDir, file + ".opspilot.bak"))).toBe(false);
+      }
+    );
+
+    it("names the matching pattern in the message the model sees", () => {
+      writeAt("apps/web/.env.local", "A=1");
+
+      const result = applyPatches(tmpDir, [{ filePath: "apps/web/.env.local", search: "A=1", replace: "A=2" }]);
+
+      expect(result.error).toContain('".env.*"');
+    });
+
+    it("changes nothing when only one patch in the batch targets a protected file", () => {
+      write("a.ts", "export const a = 1;");
+      write(".env", "KEY=original");
+
+      const result = applyPatches(tmpDir, [
+        { filePath: "a.ts", search: "export const a = 1;", replace: "export const a = 2;" },
+        { filePath: ".env", search: "original", replace: "CHANGED" },
+      ]);
+
+      expect(result.success).toBe(false);
+      expect(read("a.ts")).toBe("export const a = 1;");
+      expect(read(".env")).toBe("KEY=original");
+      expect(fs.existsSync(path.join(tmpDir, "a.ts.opspilot.bak"))).toBe(false);
+    });
+
+    it("still edits ordinary files", () => {
+      write("a.ts", "export const a = 1;");
+
+      const result = applyPatches(tmpDir, [{ filePath: "a.ts", search: "= 1", replace: "= 2" }]);
+
+      expect(result.success).toBe(true);
+      expect(read("a.ts")).toBe("export const a = 2;");
+    });
+
+    it("refuses a protected file reached through a folder link", (ctx) => {
+      writeAt(".git/config", "[core] original");
+      try {
+        fs.symlinkSync(path.join(tmpDir, ".git"), path.join(tmpDir, "tools"), "junction");
+      } catch {
+        ctx.skip();
+        return;
+      }
+
+      const result = applyPatches(tmpDir, [{ filePath: "tools/config", search: "original", replace: "HACKED" }]);
+
+      expect(result.success).toBe(false);
+      expect(read(".git/config")).toBe("[core] original");
+    });
+
+    it("lets a project allow one of the defaults", () => {
+      write(".env.example", "KEY=original");
+
+      const result = applyPatches(tmpDir, [{ filePath: ".env.example", search: "original", replace: "changed" }], {
+        protection: createProtectedPathRules({ allow: [".env.example"] }),
+      });
+
+      expect(result.success).toBe(true);
+      expect(read(".env.example")).toBe("KEY=changed");
+    });
+
+    it("lets a project protect more files", () => {
+      writeAt("config/prod.json", "{ original }");
+
+      const result = applyPatches(tmpDir, [{ filePath: "config/prod.json", search: "original", replace: "changed" }], {
+        protection: createProtectedPathRules({ protect: ["config/prod.json"] }),
+      });
+
+      expect(result.success).toBe(false);
+      expect(read("config/prod.json")).toBe("{ original }");
     });
   });
 

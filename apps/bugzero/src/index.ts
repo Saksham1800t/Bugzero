@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadProjectEnv } from "@opspilot/config"; // also loads the current folder's .env before anything else
+import { loadProjectEnv } from "@opspilot/config";
 import { Command } from "commander";
 import fs from "fs";
 import path from "path";
@@ -15,6 +15,10 @@ import {
 } from "@opspilot/core";
 import { buildErrorJson, buildHuntJson, buildRescueJson } from "./json-output";
 import { buildRescueSummary } from "./summary";
+
+// The current folder's .env, so commands without --path find the API key. hunt and rescue load the
+// --path project's .env as well once they know which project that is.
+loadProjectEnv(process.cwd());
 
 // dist/index.js sits one level below the package root, where package.json is always published
 const { version } = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf-8"));

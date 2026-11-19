@@ -2,11 +2,17 @@ import { StateGraph, START, END } from "@langchain/langgraph";
 import { GraphState } from "./state";
 import { OpenRouterProvider } from "@opspilot/ai-provider";
 import { buildAnalysisPrompt } from "@opspilot/prompts";
+import { getProtectionSettings } from "@opspilot/config";
 import { applyPatches } from "@opspilot/patcher";
 import { runValidationPipeline } from "@opspilot/analyzers";
-import type { AIFixSuggestion } from "@opspilot/shared";
+import { createProtectedPathRules, type AIFixSuggestion } from "@opspilot/shared";
 
 const provider = new OpenRouterProvider();
+
+/** Which files must not be edited, or shown to the model, in this project (built-in list plus .bugzerorc). */
+function protectionFor(cwd: string) {
+  return createProtectedPathRules(getProtectionSettings(cwd));
+}
 
 // ── Node: call the AI and parse its JSON response ──────────────────────────
 async function analyzeNode(state: typeof GraphState.State) {
@@ -14,7 +20,7 @@ async function analyzeNode(state: typeof GraphState.State) {
     `\n[BugZero] Attempt ${state.attempts + 1}/${state.maxAttempts} — asking AI…`
   );
 
-  const prompt = buildAnalysisPrompt(state.logs, state.cwd);
+  const prompt = buildAnalysisPrompt(state.logs, state.cwd, { rules: protectionFor(state.cwd) });
   const result = await provider.invoke(prompt, { cwd: state.cwd });
   const response = result.content;
 
@@ -62,7 +68,10 @@ async function applyFixNode(state: typeof GraphState.State) {
   console.log(`[BugZero] Patching ${patches.length} file${patches.length === 1 ? "" : "s"}: ${fileList}`);
   console.log(`[BugZero] Reason:   ${explanation}`);
 
-  const result = applyPatches(state.cwd, patches, { alreadyBackedUp: state.backedUpFiles });
+  const result = applyPatches(state.cwd, patches, {
+    alreadyBackedUp: state.backedUpFiles,
+    protection: protectionFor(state.cwd),
+  });
   if (!result.success) {
     console.error(`[BugZero] Patch failed: ${result.error}`);
     const updatedLogs = `${state.logs}\n\n⚠️ [BugZero System Warning] Your previous patch suggestion failed with the following error:\n- ${result.error}\n\nAny other files from that same suggestion were rolled back to keep the change atomic. Please check if the file path(s) are correct relative to the project root and make sure you target the correct file(s) that contain the build error.`;

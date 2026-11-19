@@ -1,6 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { createProtectedPathRules } from "@opspilot/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildAnalysisPrompt, truncateLogs } from "./analyze-build";
 
@@ -58,6 +59,79 @@ describe("buildAnalysisPrompt", () => {
     expect(prompt).toMatch(/--- File: src[\\/]big\.ts ---/);
     expect(prompt).toContain("file truncated");
     expect(prompt).not.toContain("TAIL_MARKER");
+  });
+
+  describe("secret files", () => {
+    const SECRET = "sk-live-VERY-SECRET-VALUE";
+
+    function writeAt(relPath: string, content: string) {
+      const full = path.join(tmpDir, relPath);
+      fs.mkdirSync(path.dirname(full), { recursive: true });
+      fs.writeFileSync(full, content, "utf-8");
+      return full;
+    }
+
+    it("does not send a .env file that the logs mention by name", () => {
+      writeAt(".env", `API_KEY=${SECRET}`);
+
+      const prompt = buildAnalysisPrompt(`Error: could not load "./.env"`, tmpDir);
+
+      expect(prompt).not.toContain(SECRET);
+    });
+
+    it("does not send a nested .env.local file", () => {
+      writeAt("apps/web/.env.local", `API_KEY=${SECRET}`);
+
+      const prompt = buildAnalysisPrompt(`failed reading "apps/web/.env.local"`, tmpDir);
+
+      expect(prompt).not.toContain(SECRET);
+    });
+
+    it("does not send a key file given by absolute path", () => {
+      const key = writeAt("certs/server.pem", `-----BEGIN PRIVATE KEY-----\n${SECRET}\n-----END PRIVATE KEY-----`);
+
+      const prompt = buildAnalysisPrompt(`TLS error: cannot use "${key}"`, tmpDir);
+
+      expect(prompt).not.toContain(SECRET);
+    });
+
+    it("does not read a secret file that sits in a directory listed from the logs", () => {
+      writeAt("config/.env.json", `{ "token": "${SECRET}" }`);
+      writeAt("config/settings.json", `{ "theme": "dark-mode-setting" }`);
+
+      const prompt = buildAnalysisPrompt(`bad config in "./config"`, tmpDir);
+
+      expect(prompt).toContain("dark-mode-setting"); // ordinary files in the folder are still shown
+      expect(prompt).not.toContain(SECRET);
+    });
+
+    it("still sends ordinary source files", () => {
+      writeAt("src/index.ts", "export const visible = 'ordinary-file-content';");
+
+      const prompt = buildAnalysisPrompt("src/index.ts(1,1): error TS2304", tmpDir);
+
+      expect(prompt).toContain("ordinary-file-content");
+    });
+
+    it("sends a secret file only when the project allows it", () => {
+      writeAt(".env.example", "PUBLIC_EXAMPLE_VALUE=1");
+
+      const withDefaults = buildAnalysisPrompt(`error in ".env.example"`, tmpDir);
+      const allowed = buildAnalysisPrompt(`error in ".env.example"`, tmpDir, {
+        rules: createProtectedPathRules({ allow: [".env.example"] }),
+      });
+
+      expect(withDefaults).not.toContain("PUBLIC_EXAMPLE_VALUE");
+      expect(allowed).toContain("PUBLIC_EXAMPLE_VALUE");
+    });
+
+    it("tells the model which files it cannot change, so it does not waste an attempt", () => {
+      const prompt = buildAnalysisPrompt("error TS2304", tmpDir);
+
+      expect(prompt).toMatch(/\.env/);
+      expect(prompt).toMatch(/lockfile/i);
+      expect(prompt).toMatch(/rejected/i);
+    });
   });
 
   describe("staying inside the project", () => {

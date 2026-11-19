@@ -1,4 +1,9 @@
-import { isInsideDirectory } from "@opspilot/shared";
+import {
+  createProtectedPathRules,
+  isInsideDirectory,
+  projectRelativePaths,
+  type ProtectedPathRules,
+} from "@opspilot/shared";
 import fs from "fs";
 import path from "path";
 import { pathToFileURL } from "url";
@@ -52,7 +57,7 @@ function resolveExistingPathPrefix(candidate: string): string | null {
   return null;
 }
 
-function getContextFiles(logs: string, cwd: string): string {
+function getContextFiles(logs: string, cwd: string, rules: ProtectedPathRules): string {
   const candidates = new Set<string>();
 
   // Heuristic 1: Extract anything inside quotes (single, double, or backticks)
@@ -113,6 +118,9 @@ function getContextFiles(logs: string, cwd: string): string {
     ) {
       return;
     }
+    // Secret files (.env, key files) are never sent, even when an error log names them. Check where the
+    // file really is too, so a link cannot smuggle one in.
+    if (projectRelativePaths(cwd, filePath).some((rel) => rules.secretBlockedBy(rel) !== undefined)) return;
     if (processedFiles.has(filePath)) return;
     if (context.length >= MAX_CONTEXT_CHARS) return;
     processedFiles.add(filePath);
@@ -194,7 +202,12 @@ function getContextFiles(logs: string, cwd: string): string {
   return context;
 }
 
-export function buildAnalysisPrompt(errorOutput: string, cwd: string): string {
+export interface AnalysisPromptOptions {
+  /** Which files must stay out of the prompt. Defaults to the built-in secret files (.env, key files). */
+  rules?: ProtectedPathRules;
+}
+
+export function buildAnalysisPrompt(errorOutput: string, cwd: string, options: AnalysisPromptOptions = {}): string {
   const warningMarker = "⚠️ [BugZero System Warning]";
   let compilerLogs = errorOutput;
   let historySection = "";
@@ -210,7 +223,7 @@ export function buildAnalysisPrompt(errorOutput: string, cwd: string): string {
 
   compilerLogs = truncateLogs(compilerLogs);
 
-  const contextSection = getContextFiles(compilerLogs, cwd);
+  const contextSection = getContextFiles(compilerLogs, cwd, options.rules ?? createProtectedPathRules());
 
   return `You are an expert software engineer specialising in fixing build, lint, and test failures.
 
@@ -241,6 +254,7 @@ Reply with ONLY a valid JSON object in this exact shape — no markdown fences, 
 Critical rules:
 - "patches" must contain at least one entry. Only include more than one when the fix truly requires editing multiple files — most fixes need just one.
 - Each "filePath" must be a relative path from the project root (no leading /).
+- Never change secret files (.env and key files), lockfiles, CI workflow files, .git or node_modules. Patches to them are rejected, so fix the problem in another file.
 - Each "search" must be an EXACT character-for-character substring of that file's current content.
 - Each "replace" must be syntactically valid code.
 - If two patches target the same file, list them in the order they should be applied, and make sure each "search" reflects the file's content *after* the previous patch in this list has been applied to it.

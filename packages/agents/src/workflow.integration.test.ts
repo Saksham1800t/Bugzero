@@ -125,6 +125,47 @@ describe("repair workflow end to end (fake model, real patcher and pipeline)", (
     }
   });
 
+  it("refuses a patch to a secret file, leaves it untouched, then still finishes the repair", async () => {
+    fs.writeFileSync(path.join(projectDir, ".env"), "API_KEY=broken\n");
+    const aimedAtSecret = JSON.stringify({
+      rootCause: "wrong place",
+      explanation: "Edit the env file",
+      patches: [{ filePath: ".env", search: "broken", replace: "HACKED" }],
+    });
+    scriptedReplies.push(aimedAtSecret, reply("a.txt", "a.txt was broken"), reply("b.txt", "b.txt was also broken"));
+
+    const state = await runRepairWorkflow({ cwd: projectDir, logs: "error: a.txt is still broken", maxAttempts: 4 });
+
+    expect(fs.readFileSync(path.join(projectDir, ".env"), "utf8")).toBe("API_KEY=broken\n");
+    expect(fs.existsSync(path.join(projectDir, ".env.opspilot.bak"))).toBe(false);
+    expect(state.success).toBe(true);
+    expect(state.appliedFix?.patches.map((p) => p.filePath)).toEqual(["a.txt", "b.txt"]);
+  });
+
+  it("lets a project allow editing a default-protected file through .bugzerorc", async () => {
+    fs.writeFileSync(path.join(projectDir, ".bugzerorc"), JSON.stringify({ allow: [".env"] }));
+    fs.writeFileSync(path.join(projectDir, ".env"), "state: broken\n");
+    // The build now also needs .env fixed.
+    fs.writeFileSync(
+      path.join(projectDir, "check.js"),
+      `const fs = require("fs");
+       for (const file of ["a.txt", "b.txt", ".env"]) {
+         if (!fs.readFileSync(file, "utf8").includes("FIXED")) { console.error("error: " + file + " is still broken"); process.exit(1); }
+       }`
+    );
+    const fixAll = JSON.stringify({
+      rootCause: "three broken files",
+      explanation: "fixed them",
+      patches: ["a.txt", "b.txt", ".env"].map((filePath) => ({ filePath, search: "broken", replace: "FIXED" })),
+    });
+    scriptedReplies.push(fixAll);
+
+    const state = await runRepairWorkflow({ cwd: projectDir, logs: "error: a.txt is still broken", maxAttempts: 2 });
+
+    expect(state.success).toBe(true);
+    expect(fs.readFileSync(path.join(projectDir, ".env"), "utf8")).toBe("state: FIXED\n");
+  });
+
   it("still verifies and finishes the repair after an early patch fails to apply", async () => {
     const wrongSearch = JSON.stringify({
       rootCause: "guessed the wrong text",

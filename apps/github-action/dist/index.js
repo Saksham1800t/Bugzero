@@ -110717,8 +110717,12 @@ var require_dist9 = __commonJS({
     var __toCommonJS2 = (mod) => __copyProps2(__defProp2({}, "__esModule", { value: true }), mod);
     var index_exports = {};
     __export2(index_exports, {
+      DEFAULT_PROTECTED_PATTERNS: () => DEFAULT_PROTECTED_PATTERNS,
+      DEFAULT_SECRET_PATTERNS: () => DEFAULT_SECRET_PATTERNS,
+      createProtectedPathRules: () => createProtectedPathRules,
       isInsideDirectory: () => isInsideDirectory,
       isLexicallyInside: () => isLexicallyInside,
+      projectRelativePaths: () => projectRelativePaths,
       resolveInsideProject: () => resolveInsideProject,
       uniqueFilePaths: () => uniqueFilePaths2
     });
@@ -110766,6 +110770,112 @@ var require_dist9 = __commonJS({
         };
       }
       return { ok: true, absolutePath };
+    }
+    var import_fs22 = __toESM2(require("fs"));
+    var import_path22 = __toESM2(require("path"));
+    var DEFAULT_SECRET_PATTERNS = [".env", ".env.*", "*.pem", "*.key"];
+    var DEFAULT_PROTECTED_PATTERNS = [
+      ...DEFAULT_SECRET_PATTERNS,
+      ".git/",
+      ".github/workflows/",
+      ".gitlab-ci.yml",
+      ".circleci/",
+      "azure-pipelines.yml",
+      "bitbucket-pipelines.yml",
+      "Jenkinsfile",
+      "package-lock.json",
+      "pnpm-lock.yaml",
+      "yarn.lock",
+      "bun.lockb",
+      "node_modules/",
+      "*.opspilot.bak"
+    ];
+    function normalizePath(relPath) {
+      return relPath.replace(/\\/g, "/").replace(/^(\.\/)+/, "").replace(/^\/+/, "").toLowerCase();
+    }
+    function compilePattern(pattern) {
+      if (typeof pattern !== "string") return void 0;
+      let p = pattern.trim().replace(/\\/g, "/").toLowerCase();
+      if (p === "" || p.startsWith("#")) return void 0;
+      const anchored = p.startsWith("/") || p.replace(/\/+$/, "").includes("/");
+      p = p.replace(/^(\.\/)+/, "").replace(/^\/+/, "").replace(/\/+$/, "");
+      if (p === "") return void 0;
+      let source = "";
+      for (let i = 0; i < p.length; i++) {
+        const c = p[i];
+        if (c === "*") {
+          if (p[i + 1] === "*") {
+            i++;
+            if (p[i + 1] === "/") {
+              i++;
+              source += "(?:.*/)?";
+            } else {
+              source += ".*";
+            }
+          } else {
+            source += "[^/]*";
+          }
+        } else if (c === "?") {
+          source += "[^/]";
+        } else {
+          source += c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+        }
+      }
+      const regex = new RegExp(`^${anchored ? "" : "(?:.*/)?"}${source}(?:/.*)?$`);
+      return { pattern: pattern.trim(), test: (normalizedPath) => regex.test(normalizedPath) };
+    }
+    function compileAll(patterns) {
+      return (patterns ?? []).map(compilePattern).filter((m) => m !== void 0);
+    }
+    function firstMatch(matchers, normalizedPath) {
+      return matchers.find((m) => m.test(normalizedPath));
+    }
+    function createProtectedPathRules(settings = {}) {
+      const defaults = compileAll(DEFAULT_PROTECTED_PATTERNS);
+      const secrets = compileAll(DEFAULT_SECRET_PATTERNS);
+      const extra = compileAll(settings.protect);
+      const allowed = compileAll(settings.allow);
+      return {
+        editBlockedBy(relPath) {
+          const normalized = normalizePath(relPath);
+          const own = firstMatch(extra, normalized);
+          if (own) return own.pattern;
+          if (firstMatch(allowed, normalized)) return void 0;
+          return firstMatch(defaults, normalized)?.pattern;
+        },
+        secretBlockedBy(relPath) {
+          const normalized = normalizePath(relPath);
+          if (firstMatch(allowed, normalized)) return void 0;
+          return firstMatch(secrets, normalized)?.pattern;
+        }
+      };
+    }
+    function toRelative(root, target) {
+      return import_path22.default.relative(root, target).split(import_path22.default.sep).join("/");
+    }
+    function realPathAllowingMissing(target) {
+      let current = import_path22.default.resolve(target);
+      const rest = [];
+      while (true) {
+        try {
+          return import_path22.default.join(import_fs22.default.realpathSync.native(current), ...rest.reverse());
+        } catch {
+          const parent = import_path22.default.dirname(current);
+          if (parent === current) return void 0;
+          rest.push(import_path22.default.basename(current));
+          current = parent;
+        }
+      }
+    }
+    function projectRelativePaths(cwd, absolutePath) {
+      const paths = [toRelative(import_path22.default.resolve(cwd), import_path22.default.resolve(absolutePath))];
+      const realRoot = realPathAllowingMissing(cwd);
+      const realTarget = realPathAllowingMissing(absolutePath);
+      if (realRoot && realTarget) {
+        const real = toRelative(realRoot, realTarget);
+        if (real !== paths[0] && !real.startsWith("..")) paths.push(real);
+      }
+      return paths;
     }
   }
 });
@@ -110846,7 +110956,7 @@ ${tail}`;
       }
       return null;
     }
-    function getContextFiles(logs, cwd) {
+    function getContextFiles(logs, cwd, rules) {
       const candidates = /* @__PURE__ */ new Set();
       const quotedRegex = /['"`]([^'"`\n]+)['"`]/g;
       let match;
@@ -110885,6 +110995,7 @@ ${tail}`;
         if (relPath.includes("node_modules") || relPath.startsWith("build") || relPath.startsWith("dist") || relPath.startsWith(".git")) {
           return;
         }
+        if ((0, import_shared2.projectRelativePaths)(cwd, filePath).some((rel) => rules.secretBlockedBy(rel) !== void 0)) return;
         if (processedFiles.has(filePath)) return;
         if (context2.length >= MAX_CONTEXT_CHARS) return;
         processedFiles.add(filePath);
@@ -110963,7 +111074,7 @@ ${content}
       }
       return context2;
     }
-    function buildAnalysisPrompt(errorOutput, cwd) {
+    function buildAnalysisPrompt(errorOutput, cwd, options = {}) {
       const warningMarker = "\u26A0\uFE0F [BugZero System Warning]";
       let compilerLogs = errorOutput;
       let historySection = "";
@@ -110980,7 +111091,7 @@ ${w}`).join("\n\n")}
 **CRITICAL RULE:** Do NOT suggest modifying or creating the files listed under "Previous Failed Attempts" if they failed with a "File not found" or "Search string not found" error. You must inspect the compiler error logs below to find the actual file that exists and contains the error.`;
       }
       compilerLogs = truncateLogs(compilerLogs);
-      const contextSection = getContextFiles(compilerLogs, cwd);
+      const contextSection = getContextFiles(compilerLogs, cwd, options.rules ?? (0, import_shared2.createProtectedPathRules)());
       return `You are an expert software engineer specialising in fixing build, lint, and test failures.
 
 A project located at "${cwd}" failed to build. Here is the error output (very long output is shortened in the middle):
@@ -111010,6 +111121,7 @@ Reply with ONLY a valid JSON object in this exact shape \u2014 no markdown fence
 Critical rules:
 - "patches" must contain at least one entry. Only include more than one when the fix truly requires editing multiple files \u2014 most fixes need just one.
 - Each "filePath" must be a relative path from the project root (no leading /).
+- Never change secret files (.env and key files), lockfiles, CI workflow files, .git or node_modules. Patches to them are rejected, so fix the problem in another file.
 - Each "search" must be an EXACT character-for-character substring of that file's current content.
 - Each "replace" must be syntactically valid code.
 - If two patches target the same file, list them in the order they should be applied, and make sure each "search" reflects the file's content *after* the previous patch in this list has been applied to it.
@@ -111018,8 +111130,446 @@ Critical rules:
   }
 });
 
-// ../../packages/patcher/dist/index.js
+// ../../node_modules/.pnpm/dotenv@17.4.2/node_modules/dotenv/lib/main.js
+var require_main2 = __commonJS({
+  "../../node_modules/.pnpm/dotenv@17.4.2/node_modules/dotenv/lib/main.js"(exports2, module2) {
+    "use strict";
+    var fs2 = require("fs");
+    var path4 = require("path");
+    var os2 = require("os");
+    var crypto6 = require("crypto");
+    var TIPS = [
+      "\u25C8 encrypted .env [www.dotenvx.com]",
+      "\u25C8 secrets for agents [www.dotenvx.com]",
+      "\u2301 auth for agents [www.vestauth.com]",
+      "\u2318 custom filepath { path: '/custom/path/.env' }",
+      "\u2318 enable debugging { debug: true }",
+      "\u2318 override existing { override: true }",
+      "\u2318 suppress logs { quiet: true }",
+      "\u2318 multiple files { path: ['.env.local', '.env'] }"
+    ];
+    function _getRandomTip() {
+      return TIPS[Math.floor(Math.random() * TIPS.length)];
+    }
+    function parseBoolean(value) {
+      if (typeof value === "string") {
+        return !["false", "0", "no", "off", ""].includes(value.toLowerCase());
+      }
+      return Boolean(value);
+    }
+    function supportsAnsi() {
+      return process.stdout.isTTY;
+    }
+    function dim(text) {
+      return supportsAnsi() ? `\x1B[2m${text}\x1B[0m` : text;
+    }
+    var LINE = /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/mg;
+    function parse3(src) {
+      const obj = {};
+      let lines = src.toString();
+      lines = lines.replace(/\r\n?/mg, "\n");
+      let match;
+      while ((match = LINE.exec(lines)) != null) {
+        const key = match[1];
+        let value = match[2] || "";
+        value = value.trim();
+        const maybeQuote = value[0];
+        value = value.replace(/^(['"`])([\s\S]*)\1$/mg, "$2");
+        if (maybeQuote === '"') {
+          value = value.replace(/\\n/g, "\n");
+          value = value.replace(/\\r/g, "\r");
+        }
+        obj[key] = value;
+      }
+      return obj;
+    }
+    function _parseVault(options) {
+      options = options || {};
+      const vaultPath = _vaultPath(options);
+      options.path = vaultPath;
+      const result = DotenvModule.configDotenv(options);
+      if (!result.parsed) {
+        const err = new Error(`MISSING_DATA: Cannot parse ${vaultPath} for an unknown reason`);
+        err.code = "MISSING_DATA";
+        throw err;
+      }
+      const keys = _dotenvKey(options).split(",");
+      const length = keys.length;
+      let decrypted;
+      for (let i = 0; i < length; i++) {
+        try {
+          const key = keys[i].trim();
+          const attrs = _instructions(result, key);
+          decrypted = DotenvModule.decrypt(attrs.ciphertext, attrs.key);
+          break;
+        } catch (error) {
+          if (i + 1 >= length) {
+            throw error;
+          }
+        }
+      }
+      return DotenvModule.parse(decrypted);
+    }
+    function _warn(message) {
+      console.error(`\u26A0 ${message}`);
+    }
+    function _debug(message) {
+      console.log(`\u2506 ${message}`);
+    }
+    function _log(message) {
+      console.log(`\u25C7 ${message}`);
+    }
+    function _dotenvKey(options) {
+      if (options && options.DOTENV_KEY && options.DOTENV_KEY.length > 0) {
+        return options.DOTENV_KEY;
+      }
+      if (process.env.DOTENV_KEY && process.env.DOTENV_KEY.length > 0) {
+        return process.env.DOTENV_KEY;
+      }
+      return "";
+    }
+    function _instructions(result, dotenvKey) {
+      let uri;
+      try {
+        uri = new URL(dotenvKey);
+      } catch (error) {
+        if (error.code === "ERR_INVALID_URL") {
+          const err = new Error("INVALID_DOTENV_KEY: Wrong format. Must be in valid uri format like dotenv://:key_1234@dotenvx.com/vault/.env.vault?environment=development");
+          err.code = "INVALID_DOTENV_KEY";
+          throw err;
+        }
+        throw error;
+      }
+      const key = uri.password;
+      if (!key) {
+        const err = new Error("INVALID_DOTENV_KEY: Missing key part");
+        err.code = "INVALID_DOTENV_KEY";
+        throw err;
+      }
+      const environment = uri.searchParams.get("environment");
+      if (!environment) {
+        const err = new Error("INVALID_DOTENV_KEY: Missing environment part");
+        err.code = "INVALID_DOTENV_KEY";
+        throw err;
+      }
+      const environmentKey = `DOTENV_VAULT_${environment.toUpperCase()}`;
+      const ciphertext = result.parsed[environmentKey];
+      if (!ciphertext) {
+        const err = new Error(`NOT_FOUND_DOTENV_ENVIRONMENT: Cannot locate environment ${environmentKey} in your .env.vault file.`);
+        err.code = "NOT_FOUND_DOTENV_ENVIRONMENT";
+        throw err;
+      }
+      return { ciphertext, key };
+    }
+    function _vaultPath(options) {
+      let possibleVaultPath = null;
+      if (options && options.path && options.path.length > 0) {
+        if (Array.isArray(options.path)) {
+          for (const filepath of options.path) {
+            if (fs2.existsSync(filepath)) {
+              possibleVaultPath = filepath.endsWith(".vault") ? filepath : `${filepath}.vault`;
+            }
+          }
+        } else {
+          possibleVaultPath = options.path.endsWith(".vault") ? options.path : `${options.path}.vault`;
+        }
+      } else {
+        possibleVaultPath = path4.resolve(process.cwd(), ".env.vault");
+      }
+      if (fs2.existsSync(possibleVaultPath)) {
+        return possibleVaultPath;
+      }
+      return null;
+    }
+    function _resolveHome(envPath) {
+      return envPath[0] === "~" ? path4.join(os2.homedir(), envPath.slice(1)) : envPath;
+    }
+    function _configVault(options) {
+      const debug = parseBoolean(process.env.DOTENV_CONFIG_DEBUG || options && options.debug);
+      const quiet = parseBoolean(process.env.DOTENV_CONFIG_QUIET || options && options.quiet);
+      if (debug || !quiet) {
+        _log("loading env from encrypted .env.vault");
+      }
+      const parsed = DotenvModule._parseVault(options);
+      let processEnv = process.env;
+      if (options && options.processEnv != null) {
+        processEnv = options.processEnv;
+      }
+      DotenvModule.populate(processEnv, parsed, options);
+      return { parsed };
+    }
+    function configDotenv(options) {
+      const dotenvPath = path4.resolve(process.cwd(), ".env");
+      let encoding = "utf8";
+      let processEnv = process.env;
+      if (options && options.processEnv != null) {
+        processEnv = options.processEnv;
+      }
+      let debug = parseBoolean(processEnv.DOTENV_CONFIG_DEBUG || options && options.debug);
+      let quiet = parseBoolean(processEnv.DOTENV_CONFIG_QUIET || options && options.quiet);
+      if (options && options.encoding) {
+        encoding = options.encoding;
+      } else {
+        if (debug) {
+          _debug("no encoding is specified (UTF-8 is used by default)");
+        }
+      }
+      let optionPaths = [dotenvPath];
+      if (options && options.path) {
+        if (!Array.isArray(options.path)) {
+          optionPaths = [_resolveHome(options.path)];
+        } else {
+          optionPaths = [];
+          for (const filepath of options.path) {
+            optionPaths.push(_resolveHome(filepath));
+          }
+        }
+      }
+      let lastError;
+      const parsedAll = {};
+      for (const path5 of optionPaths) {
+        try {
+          const parsed = DotenvModule.parse(fs2.readFileSync(path5, { encoding }));
+          DotenvModule.populate(parsedAll, parsed, options);
+        } catch (e) {
+          if (debug) {
+            _debug(`failed to load ${path5} ${e.message}`);
+          }
+          lastError = e;
+        }
+      }
+      const populated = DotenvModule.populate(processEnv, parsedAll, options);
+      debug = parseBoolean(processEnv.DOTENV_CONFIG_DEBUG || debug);
+      quiet = parseBoolean(processEnv.DOTENV_CONFIG_QUIET || quiet);
+      if (debug || !quiet) {
+        const keysCount = Object.keys(populated).length;
+        const shortPaths = [];
+        for (const filePath of optionPaths) {
+          try {
+            const relative = path4.relative(process.cwd(), filePath);
+            shortPaths.push(relative);
+          } catch (e) {
+            if (debug) {
+              _debug(`failed to load ${filePath} ${e.message}`);
+            }
+            lastError = e;
+          }
+        }
+        _log(`injected env (${keysCount}) from ${shortPaths.join(",")} ${dim(`// tip: ${_getRandomTip()}`)}`);
+      }
+      if (lastError) {
+        return { parsed: parsedAll, error: lastError };
+      } else {
+        return { parsed: parsedAll };
+      }
+    }
+    function config(options) {
+      if (_dotenvKey(options).length === 0) {
+        return DotenvModule.configDotenv(options);
+      }
+      const vaultPath = _vaultPath(options);
+      if (!vaultPath) {
+        _warn(`you set DOTENV_KEY but you are missing a .env.vault file at ${vaultPath}`);
+        return DotenvModule.configDotenv(options);
+      }
+      return DotenvModule._configVault(options);
+    }
+    function decrypt(encrypted, keyStr) {
+      const key = Buffer.from(keyStr.slice(-64), "hex");
+      let ciphertext = Buffer.from(encrypted, "base64");
+      const nonce = ciphertext.subarray(0, 12);
+      const authTag = ciphertext.subarray(-16);
+      ciphertext = ciphertext.subarray(12, -16);
+      try {
+        const aesgcm = crypto6.createDecipheriv("aes-256-gcm", key, nonce);
+        aesgcm.setAuthTag(authTag);
+        return `${aesgcm.update(ciphertext)}${aesgcm.final()}`;
+      } catch (error) {
+        const isRange = error instanceof RangeError;
+        const invalidKeyLength = error.message === "Invalid key length";
+        const decryptionFailed = error.message === "Unsupported state or unable to authenticate data";
+        if (isRange || invalidKeyLength) {
+          const err = new Error("INVALID_DOTENV_KEY: It must be 64 characters long (or more)");
+          err.code = "INVALID_DOTENV_KEY";
+          throw err;
+        } else if (decryptionFailed) {
+          const err = new Error("DECRYPTION_FAILED: Please check your DOTENV_KEY");
+          err.code = "DECRYPTION_FAILED";
+          throw err;
+        } else {
+          throw error;
+        }
+      }
+    }
+    function populate(processEnv, parsed, options = {}) {
+      const debug = Boolean(options && options.debug);
+      const override = Boolean(options && options.override);
+      const populated = {};
+      if (typeof parsed !== "object") {
+        const err = new Error("OBJECT_REQUIRED: Please check the processEnv argument being passed to populate");
+        err.code = "OBJECT_REQUIRED";
+        throw err;
+      }
+      for (const key of Object.keys(parsed)) {
+        if (Object.prototype.hasOwnProperty.call(processEnv, key)) {
+          if (override === true) {
+            processEnv[key] = parsed[key];
+            populated[key] = parsed[key];
+          }
+          if (debug) {
+            if (override === true) {
+              _debug(`"${key}" is already defined and WAS overwritten`);
+            } else {
+              _debug(`"${key}" is already defined and was NOT overwritten`);
+            }
+          }
+        } else {
+          processEnv[key] = parsed[key];
+          populated[key] = parsed[key];
+        }
+      }
+      return populated;
+    }
+    var DotenvModule = {
+      configDotenv,
+      _configVault,
+      _parseVault,
+      config,
+      decrypt,
+      parse: parse3,
+      populate
+    };
+    module2.exports.configDotenv = DotenvModule.configDotenv;
+    module2.exports._configVault = DotenvModule._configVault;
+    module2.exports._parseVault = DotenvModule._parseVault;
+    module2.exports.config = DotenvModule.config;
+    module2.exports.decrypt = DotenvModule.decrypt;
+    module2.exports.parse = DotenvModule.parse;
+    module2.exports.populate = DotenvModule.populate;
+    module2.exports = DotenvModule;
+  }
+});
+
+// ../../packages/config/dist/index.js
 var require_dist11 = __commonJS({
+  "../../packages/config/dist/index.js"(exports2, module2) {
+    "use strict";
+    var __create2 = Object.create;
+    var __defProp2 = Object.defineProperty;
+    var __getOwnPropDesc2 = Object.getOwnPropertyDescriptor;
+    var __getOwnPropNames2 = Object.getOwnPropertyNames;
+    var __getProtoOf2 = Object.getPrototypeOf;
+    var __hasOwnProp2 = Object.prototype.hasOwnProperty;
+    var __export2 = (target, all) => {
+      for (var name in all)
+        __defProp2(target, name, { get: all[name], enumerable: true });
+    };
+    var __copyProps2 = (to, from, except, desc) => {
+      if (from && typeof from === "object" || typeof from === "function") {
+        for (let key of __getOwnPropNames2(from))
+          if (!__hasOwnProp2.call(to, key) && key !== except)
+            __defProp2(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc2(from, key)) || desc.enumerable });
+      }
+      return to;
+    };
+    var __toESM2 = (mod, isNodeMode, target) => (target = mod != null ? __create2(__getProtoOf2(mod)) : {}, __copyProps2(
+      // If the importer is in node compatibility mode or this is not an ESM
+      // file that has been converted to a CommonJS file using a Babel-
+      // compatible transform (i.e. "__esModule" has not been set), then set
+      // "default" to the CommonJS "module.exports" for node compatibility.
+      isNodeMode || !mod || !mod.__esModule ? __defProp2(target, "default", { value: mod, enumerable: true }) : target,
+      mod
+    ));
+    var __toCommonJS2 = (mod) => __copyProps2(__defProp2({}, "__esModule", { value: true }), mod);
+    var index_exports = {};
+    __export2(index_exports, {
+      env: () => env,
+      getLocalConfig: () => getLocalConfig,
+      getProtectionSettings: () => getProtectionSettings,
+      getSelectedModel: () => getSelectedModel,
+      loadProjectEnv: () => loadProjectEnv,
+      saveLocalConfig: () => saveLocalConfig
+    });
+    module2.exports = __toCommonJS2(index_exports);
+    var import_dotenv = __toESM2(require_main2());
+    var import_fs2 = __toESM2(require("fs"));
+    var import_path2 = __toESM2(require("path"));
+    var loadedFromFiles = /* @__PURE__ */ new Map();
+    function findEnvFile(startDir) {
+      let dir = import_path2.default.resolve(startDir);
+      while (true) {
+        const envPath = import_path2.default.join(dir, ".env");
+        try {
+          if (import_fs2.default.statSync(envPath).isFile()) return envPath;
+        } catch {
+        }
+        const parent = import_path2.default.dirname(dir);
+        if (parent === dir) return void 0;
+        dir = parent;
+      }
+    }
+    function applyEnvFile(envPath) {
+      try {
+        const parsed = import_dotenv.default.parse(import_fs2.default.readFileSync(envPath));
+        for (const [key, value] of Object.entries(parsed)) {
+          const current = process.env[key];
+          if (current === void 0 || current === loadedFromFiles.get(key)) {
+            process.env[key] = value;
+            loadedFromFiles.set(key, value);
+          }
+        }
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    function loadProjectEnv(projectDir) {
+      const envPath = findEnvFile(projectDir);
+      if (!envPath) return void 0;
+      return applyEnvFile(envPath) ? envPath : void 0;
+    }
+    var env = {
+      // Read on access, so a key loaded later by loadProjectEnv() is seen.
+      get openRouterKey() {
+        return process.env.OPENROUTER_API_KEY || "";
+      }
+    };
+    var import_fs22 = __toESM2(require("fs"));
+    var import_path22 = __toESM2(require("path"));
+    var CONFIG_FILENAME = ".bugzerorc";
+    function getLocalConfig(cwd = process.cwd()) {
+      try {
+        const configPath = import_path22.default.resolve(cwd, CONFIG_FILENAME);
+        if (import_fs22.default.existsSync(configPath)) {
+          const content = import_fs22.default.readFileSync(configPath, "utf-8");
+          return JSON.parse(content);
+        }
+      } catch (e) {
+      }
+      return {};
+    }
+    function saveLocalConfig(config, cwd = process.cwd()) {
+      const configPath = import_path22.default.resolve(cwd, CONFIG_FILENAME);
+      const merged = { ...getLocalConfig(cwd), ...config };
+      import_fs22.default.writeFileSync(configPath, JSON.stringify(merged, null, 2), "utf-8");
+    }
+    function stringList(value) {
+      if (!Array.isArray(value)) return [];
+      return value.filter((entry) => typeof entry === "string" && entry.trim() !== "");
+    }
+    function getProtectionSettings(cwd = process.cwd()) {
+      const config = getLocalConfig(cwd);
+      return { protect: stringList(config.protect), allow: stringList(config.allow) };
+    }
+    function getSelectedModel(cwd = process.cwd()) {
+      const config = getLocalConfig(cwd);
+      return config.model || "deepseek/deepseek-chat";
+    }
+  }
+});
+
+// ../../packages/patcher/dist/index.js
+var require_dist12 = __commonJS({
   "../../packages/patcher/dist/index.js"(exports2, module2) {
     "use strict";
     var __create2 = Object.create;
@@ -111226,6 +111776,7 @@ var require_dist11 = __commonJS({
       if (patches.length === 0) {
         return { success: false, error: "No patches to apply.", applied: [] };
       }
+      const protection = options.protection ?? (0, import_shared2.createProtectedPathRules)();
       const absolutePaths = [];
       for (const patch of patches) {
         const resolved = (0, import_shared2.resolveInsideProject)(cwd, patch.filePath);
@@ -111235,6 +111786,16 @@ var require_dist11 = __commonJS({
             error: `Failed to patch "${patch.filePath}": ${resolved.error}`,
             applied: []
           };
+        }
+        for (const relPath of (0, import_shared2.projectRelativePaths)(cwd, resolved.absolutePath)) {
+          const pattern = protection.editBlockedBy(relPath);
+          if (pattern !== void 0) {
+            return {
+              success: false,
+              error: `Failed to patch "${patch.filePath}": this file is protected (it matches "${pattern}"), so BugZero never edits it. Fix the problem in a different file.`,
+              applied: []
+            };
+          }
         }
         absolutePaths.push(resolved.absolutePath);
       }
@@ -111283,7 +111844,7 @@ var require_dist11 = __commonJS({
 });
 
 // ../../packages/agents/dist/index.js
-var require_dist12 = __commonJS({
+var require_dist13 = __commonJS({
   "../../packages/agents/dist/index.js"(exports2, module2) {
     "use strict";
     var __defProp2 = Object.defineProperty;
@@ -111402,15 +111963,20 @@ var require_dist12 = __commonJS({
     });
     var import_ai_provider = require_dist8();
     var import_prompts = require_dist10();
-    var import_patcher = require_dist11();
+    var import_config = require_dist11();
+    var import_patcher = require_dist12();
     var import_analyzers = require_dist();
+    var import_shared2 = require_dist9();
     var provider = new import_ai_provider.OpenRouterProvider();
+    function protectionFor(cwd) {
+      return (0, import_shared2.createProtectedPathRules)((0, import_config.getProtectionSettings)(cwd));
+    }
     async function analyzeNode(state) {
       console.log(
         `
 [BugZero] Attempt ${state.attempts + 1}/${state.maxAttempts} \u2014 asking AI\u2026`
       );
-      const prompt = (0, import_prompts.buildAnalysisPrompt)(state.logs, state.cwd);
+      const prompt = (0, import_prompts.buildAnalysisPrompt)(state.logs, state.cwd, { rules: protectionFor(state.cwd) });
       const result = await provider.invoke(prompt, { cwd: state.cwd });
       const response = result.content;
       let fixSuggestion = null;
@@ -111448,7 +112014,10 @@ var require_dist12 = __commonJS({
       const fileList = patches.map((p) => p.filePath).join(", ");
       console.log(`[BugZero] Patching ${patches.length} file${patches.length === 1 ? "" : "s"}: ${fileList}`);
       console.log(`[BugZero] Reason:   ${explanation}`);
-      const result = (0, import_patcher.applyPatches)(state.cwd, patches, { alreadyBackedUp: state.backedUpFiles });
+      const result = (0, import_patcher.applyPatches)(state.cwd, patches, {
+        alreadyBackedUp: state.backedUpFiles,
+        protection: protectionFor(state.cwd)
+      });
       if (!result.success) {
         console.error(`[BugZero] Patch failed: ${result.error}`);
         const updatedLogs = `${state.logs}
@@ -111515,7 +112084,7 @@ Any other files from that same suggestion were rolled back to keep the change at
 });
 
 // ../../packages/core/dist/index.js
-var require_dist13 = __commonJS({
+var require_dist14 = __commonJS({
   "../../packages/core/dist/index.js"(exports2, module2) {
     "use strict";
     var __create2 = Object.create;
@@ -111585,7 +112154,7 @@ var require_dist13 = __commonJS({
       return "unknown";
     }
     var import_analyzers = require_dist();
-    var import_agents = require_dist12();
+    var import_agents = require_dist13();
     var import_shared2 = require_dist9();
     var import_fs3 = __toESM2(require("fs"));
     var import_path3 = __toESM2(require("path"));
@@ -112033,7 +112602,7 @@ var github = __toESM(require_github());
 // src/run.ts
 var import_fs = __toESM(require("fs"));
 var import_path = __toESM(require("path"));
-var import_core2 = __toESM(require_dist13());
+var import_core2 = __toESM(require_dist14());
 var import_shared = __toESM(require_dist9());
 
 // src/open-pull-request.ts

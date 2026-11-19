@@ -101,6 +101,9 @@ importers:
       '@opspilot/analyzers':
         specifier: workspace:*
         version: link:../analyzers
+      '@opspilot/config':
+        specifier: workspace:*
+        version: link:../config
       '@opspilot/patcher':
         specifier: workspace:*
         version: link:../patcher

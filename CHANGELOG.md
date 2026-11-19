@@ -9,6 +9,44 @@ Entries for releases before 0.0.45 are not written up yet; see the
 
 ## [Unreleased]
 
+## [0.0.54] - 2026-11-19
+
+### Security
+
+- **BugZero no longer edits secrets, git internals, CI configs, lockfiles or dependencies.** A model
+  reply could previously overwrite `.env`, a deploy key, `.github/workflows/*.yml` or a lockfile, and a
+  fix in a bad guess or a hostile project could be hidden in a change nobody reviews. Patches to these
+  are now refused before any file changes, and the model is told the file is protected so it fixes
+  something else. The default list: `.env` and `.env.*`, `*.pem`, `*.key`, `.git/`, `.github/workflows/`,
+  `.gitlab-ci.yml`, `.circleci/`, `azure-pipelines.yml`, `bitbucket-pipelines.yml`, `Jenkinsfile`,
+  `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lockb`, `node_modules/`, and `*.opspilot.bak`.
+  A protected file reached through a symlink or junction is caught too.
+- **Secret files are no longer sent to the AI model.** An error log that named `.env`, a nested
+  `.env.local`, or a key file (by relative or absolute path, or as part of a listed folder) used to get
+  that file's contents added to the prompt. `.env`, `.env.*`, `*.pem` and `*.key` are now left out.
+  Lockfiles and CI configs can still be shown as context.
+
+### Added
+
+- **`protect` and `allow` in `.bugzerorc`** to adjust the list per project. `protect` adds patterns
+  that must never be edited (for example `"config/prod.json"` or `"migrations/**"`); `allow` lifts a
+  default for a file you do want BugZero to be able to change and read (for example `".env.example"`).
+  Both are optional, a `protect` pattern wins over `allow`, and values of the wrong type are ignored.
+
+### Changed
+
+- **Behaviour change:** edits to lockfiles and CI workflow files, which were possible before, are now
+  refused by default. If a project depends on that, list the file under `allow` in `.bugzerorc`.
+- `bugzero vibe` now keeps the other settings in `.bugzerorc` when it saves the model. It used to
+  replace the whole file, which would have erased `protect` and `allow`.
+
+### Internal
+
+- `@opspilot/config` no longer loads a `.env` just by being imported; the CLI does it explicitly at
+  startup, so the GitHub Action does not begin reading a repository's `.env`.
+
+No existing CLI flag or `.bugzerorc` key was renamed or removed.
+
 ## [0.0.53] - 2026-11-19
 
 ### Added
