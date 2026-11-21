@@ -111866,6 +111866,7 @@ var require_dist13 = __commonJS({
     var __toCommonJS2 = (mod) => __copyProps2(__defProp2({}, "__esModule", { value: true }), mod);
     var index_exports = {};
     __export2(index_exports, {
+      previewAnalysisPrompt: () => previewAnalysisPrompt,
       runRepairWorkflow: () => runRepairWorkflow,
       workflow: () => workflow
     });
@@ -111971,12 +111972,15 @@ var require_dist13 = __commonJS({
     function protectionFor(cwd) {
       return (0, import_shared2.createProtectedPathRules)((0, import_config.getProtectionSettings)(cwd));
     }
+    function previewAnalysisPrompt(cwd, logs) {
+      return (0, import_prompts.buildAnalysisPrompt)(logs, cwd, { rules: protectionFor(cwd) });
+    }
     async function analyzeNode(state) {
       console.log(
         `
 [BugZero] Attempt ${state.attempts + 1}/${state.maxAttempts} \u2014 asking AI\u2026`
       );
-      const prompt = (0, import_prompts.buildAnalysisPrompt)(state.logs, state.cwd, { rules: protectionFor(state.cwd) });
+      const prompt = previewAnalysisPrompt(state.cwd, state.logs);
       const result = await provider.invoke(prompt, { cwd: state.cwd });
       const response = result.content;
       let fixSuggestion = null;
@@ -112325,6 +112329,10 @@ Re-run without \`--dry-run\` to let BugZero attempt a fix.
       const pipelineResult = await (0, import_analyzers.runValidationPipeline)(cwd, { timeoutMs });
       if (pipelineResult.success) {
         console.log("[BugZero] Validation already passing \u2014 nothing to fix.");
+        if (options.printPrompt) {
+          console.log("[BugZero] Nothing would be sent to an AI model.");
+          return { success: true, attempts: 0, finalOutput: "" };
+        }
         await writeReport(cwd, "rescue", {
           success: true,
           attempts: 0,
@@ -112336,6 +112344,15 @@ Re-run without \`--dry-run\` to let BugZero attempt a fix.
       }
       const errors = (0, import_analyzers.parseErrors)(pipelineResult.output);
       console.log(`[BugZero] Detected ${errors.length} error(s) (type: ${errors[0]?.type ?? "unknown"})`);
+      if (options.printPrompt) {
+        console.log("[BugZero] --print-prompt: showing the first prompt without sending it.");
+        return {
+          success: false,
+          attempts: 0,
+          finalOutput: pipelineResult.output,
+          promptPreview: (0, import_agents.previewAnalysisPrompt)(cwd, pipelineResult.output)
+        };
+      }
       if (options.dryRun) {
         console.log("[BugZero] Dry-run mode \u2014 skipping AI fix.");
         await writeReport(cwd, "rescue", {

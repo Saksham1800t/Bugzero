@@ -1,5 +1,5 @@
 import { runBuild, runLint, runTests, parseErrors, runValidationPipeline } from "@opspilot/analyzers";
-import { runRepairWorkflow } from "@opspilot/agents";
+import { previewAnalysisPrompt, runRepairWorkflow } from "@opspilot/agents";
 import { uniqueFilePaths, type FixResult } from "@opspilot/shared";
 import fs from "fs";
 import path from "path";
@@ -30,6 +30,11 @@ export interface OrchestrateOptions {
   timeoutSeconds?: number;
   /** `hunt` only: set to false to write the report without contacting an AI model (default: true) */
   aiReport?: boolean;
+  /**
+   * `rescue` only: run the checks, then return the exact prompt that would be sent to the AI model as
+   * `promptPreview` without sending it, repairing anything, or writing a report.
+   */
+  printPrompt?: boolean;
 }
 
 /** Run build, lint and tests — return raw results without touching files. */
@@ -73,6 +78,10 @@ export async function orchestrateAndFix(
 
   if (pipelineResult.success) {
     console.log("[BugZero] Validation already passing — nothing to fix.");
+    if (options.printPrompt) {
+      console.log("[BugZero] Nothing would be sent to an AI model.");
+      return { success: true, attempts: 0, finalOutput: "" };
+    }
     await writeReport(cwd, "rescue", {
       success: true,
       attempts: 0,
@@ -86,6 +95,16 @@ export async function orchestrateAndFix(
   // ── Step 2: Parse errors for context ────────────────────────────────────
   const errors = parseErrors(pipelineResult.output);
   console.log(`[BugZero] Detected ${errors.length} error(s) (type: ${errors[0]?.type ?? "unknown"})`);
+
+  if (options.printPrompt) {
+    console.log("[BugZero] --print-prompt: showing the first prompt without sending it.");
+    return {
+      success: false,
+      attempts: 0,
+      finalOutput: pipelineResult.output,
+      promptPreview: previewAnalysisPrompt(cwd, pipelineResult.output),
+    };
+  }
 
   if (options.dryRun) {
     console.log("[BugZero] Dry-run mode — skipping AI fix.");

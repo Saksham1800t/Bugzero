@@ -60,7 +60,7 @@ export function buildHuntJson(
   };
 }
 
-export type RescueOutcome = "already-passing" | "fixed" | "failed" | "dry-run";
+export type RescueOutcome = "already-passing" | "fixed" | "failed" | "dry-run" | "prompt-preview";
 
 export interface RescueJson extends ProjectInfo {
   command: "rescue";
@@ -72,6 +72,8 @@ export interface RescueJson extends ProjectInfo {
   tokens: { prompt: number; completion: number; total: number } | null;
   fix: { rootCause: string; explanation: string; files: string[] } | null;
   error: string | null;
+  /** Only set by `--print-prompt`: the exact prompt that would be sent to the AI model (nothing was sent). */
+  prompt: string | null;
 }
 
 /**
@@ -81,7 +83,8 @@ export interface RescueJson extends ProjectInfo {
  */
 export function buildRescueJson(result: RescueResult, info: ProjectInfo & { dryRun: boolean }): RescueJson {
   let outcome: RescueOutcome;
-  if (result.success && result.attempts === 0) outcome = "already-passing";
+  if (result.promptPreview !== undefined) outcome = "prompt-preview";
+  else if (result.success && result.attempts === 0) outcome = "already-passing";
   else if (result.success) outcome = "fixed";
   else if (info.dryRun) outcome = "dry-run";
   else outcome = "failed";
@@ -98,7 +101,8 @@ export function buildRescueJson(result: RescueResult, info: ProjectInfo & { dryR
   return {
     command: "rescue",
     outcome,
-    success: result.success,
+    // A preview that shows the prompt did what was asked, which is why its exit code is 0
+    success: result.success || result.promptPreview !== undefined,
     dryRun: info.dryRun,
     path: info.path,
     framework: info.framework,
@@ -114,6 +118,7 @@ export function buildRescueJson(result: RescueResult, info: ProjectInfo & { dryR
         }
       : null,
     error: result.error ?? null,
+    prompt: result.promptPreview ?? null,
     reportPath: info.reportPath,
   };
 }

@@ -9,6 +9,32 @@ Entries for releases before 0.0.45 are not written up yet; see the
 
 ## [Unreleased]
 
+## [0.0.55] - 2026-11-21
+
+### Added
+
+- **`bugzero rescue --print-prompt` shows exactly what would be sent to the AI model, then stops.** It
+  runs your build, lint and tests locally to get the error output, prints the exact first repair prompt
+  on stdout, and exits with code 0. Nothing is sent, nothing is edited, and no report is written, so you
+  can check what leaves your machine, or save it with `> prompt.txt`. Progress messages go to stderr.
+  The preview is built by the same function the repair loop uses, so it cannot drift from what is sent.
+  If the project already passes, nothing would be sent and it says so. It takes precedence over
+  `--dry-run`, which asks the model to write a report.
+- **`--json` with `--print-prompt`** reports `"outcome": "prompt-preview"`, `"success": true` and the
+  text in a new `"prompt"` field.
+
+### Changed
+
+- The `--json` result of `rescue` has a new `prompt` field (`null` unless `--print-prompt` was used) and
+  a new possible `outcome` value, `"prompt-preview"`. Existing fields and values are unchanged.
+
+### Docs
+
+- New [docs/PRIVACY.md](docs/PRIVACY.md) and a short Privacy section in the README: exactly what is sent
+  to the AI provider and when, what is never sent, the size limits, how to check it first, and the
+  limits of the protection (a secret that your build prints, or that sits inside a source file an error
+  mentions, is not recognised and will be sent).
+
 ## [0.0.54] - 2026-11-19
 
 ### Security

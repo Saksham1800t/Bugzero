@@ -225,6 +225,7 @@ bugzero rescue --path /path/to/your/project
 | `--max-attempts <n>` | `-n` | `3` | Maximum AI fix iterations before giving up |
 | `--timeout <seconds>` | `-t` | none | Stop any build, lint, or test command that runs longer than this many seconds |
 | `--dry-run` | | `false` | Analyze only — no files will be written |
+| `--print-prompt` | | `false` | Print the exact prompt that would be sent to the AI model, then stop. Nothing is sent and no files are written |
 | `--json` | | `false` | Print the result as one JSON document on stdout (logs go to stderr) |
 
 </details>
@@ -259,6 +260,20 @@ bugzero rescue --json --dry-run | jq -r '.outcome'
 ```
 
 `hunt` reports each step (`build`, `lint`, `test`) as `passed`, `failed`, or `skipped`; failed steps include the command's output and whether it timed out. `rescue` reports an `outcome` of `already-passing`, `fixed`, `failed`, or `dry-run`, along with the model, token usage, and the files and root cause of any fix. Both include the path to the generated report. If a run can't start at all (for example, because of an invalid option), stdout is `{ "success": false, "error": "..." }`.
+
+---
+
+## Privacy
+
+BugZero runs your build, lint and tests on your own machine. The only time your code can leave it is when BugZero asks an AI model for help, through [OpenRouter](https://openrouter.ai) with your own API key.
+
+- **What is sent:** the error output of the failing command and the contents of the project's source files that output mentions (each shortened to a size limit), plus your project folder's path. Nothing is sent when your project already passes.
+- **What is never sent:** files outside your project, secret files (`.env`, `.env.*`, `*.pem`, `*.key`), `node_modules`, build output and `.git`. BugZero cannot recognise a secret by its content, so a password that your build prints is sent like any other text.
+- **See it first:** `bugzero rescue --print-prompt` prints the exact prompt and sends nothing.
+- **Stay offline:** `bugzero hunt --no-ai-report` makes no network call.
+- There is no telemetry, analytics or update check.
+
+The full list, with sizes and limits, is in [docs/PRIVACY.md](https://github.com/Saksham1800t/Bugzero/blob/main/docs/PRIVACY.md).
 
 ---
 

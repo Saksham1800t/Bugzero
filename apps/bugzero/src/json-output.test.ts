@@ -140,6 +140,28 @@ describe("buildRescueJson", () => {
     const json = buildRescueJson({ success: true, attempts: 0, finalOutput: "" }, rescueInfo);
     expect(JSON.parse(JSON.stringify(json))).toEqual(json);
   });
+
+  it("reports a printed prompt as a successful preview carrying the prompt", () => {
+    const json = buildRescueJson(
+      { success: false, attempts: 0, finalOutput: "error", promptPreview: "THE PROMPT" },
+      rescueInfo
+    );
+
+    expect(json).toMatchObject({
+      command: "rescue",
+      outcome: "prompt-preview",
+      success: true,
+      attempts: 0,
+      model: null,
+      tokens: null,
+      prompt: "THE PROMPT",
+    });
+  });
+
+  it("has no prompt on a normal run", () => {
+    expect(buildRescueJson({ success: true, attempts: 0, finalOutput: "" }, rescueInfo).prompt).toBeNull();
+    expect(buildRescueJson({ success: false, attempts: 3, finalOutput: "x", error: "e" }, rescueInfo).prompt).toBeNull();
+  });
 });
 
 describe("buildErrorJson", () => {

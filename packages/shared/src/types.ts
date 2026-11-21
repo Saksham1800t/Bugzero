@@ -47,4 +47,9 @@ export interface FixResult {
   modelUsed?: string;
   promptTokens?: number;
   completionTokens?: number;
+  /**
+   * Set instead of running the repair when only the first prompt was requested (`rescue --print-prompt`):
+   * the exact text that would have been sent to the AI model. Nothing was sent.
+   */
+  promptPreview?: string;
 }

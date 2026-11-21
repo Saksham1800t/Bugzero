@@ -5,11 +5,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Only the model is faked. The patcher, the validation pipeline (a real `npm run build`),
 // and the filesystem are all real, so this checks what actually ends up on disk and in appliedFix.
-const { scriptedReplies } = vi.hoisted(() => ({ scriptedReplies: [] as string[] }));
+const { scriptedReplies, receivedPrompts } = vi.hoisted(() => ({
+  scriptedReplies: [] as string[],
+  receivedPrompts: [] as string[],
+}));
 
 vi.mock("@opspilot/ai-provider", () => ({
   OpenRouterProvider: class {
-    async invoke() {
+    async invoke(prompt: string) {
+      receivedPrompts.push(prompt);
       const content = scriptedReplies.shift();
       if (content === undefined) throw new Error("The fake model was asked for more replies than were scripted.");
       return { content, model: "fake-model", usage: { prompt_tokens: 1, completion_tokens: 1 } };
@@ -17,7 +21,7 @@ vi.mock("@opspilot/ai-provider", () => ({
   },
 }));
 
-import { runRepairWorkflow } from "./workflow";
+import { previewAnalysisPrompt, runRepairWorkflow } from "./workflow";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -36,6 +40,7 @@ describe("repair workflow end to end (fake model, real patcher and pipeline)", (
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
     scriptedReplies.length = 0;
+    receivedPrompts.length = 0;
 
     projectDir = fs.mkdtempSync(path.join(os.tmpdir(), "bugzero-workflow-int-"));
     // The build only passes once BOTH files have been fixed.
@@ -123,6 +128,21 @@ describe("repair workflow end to end (fake model, real patcher and pipeline)", (
     } finally {
       fs.rmSync(outsideFile, { force: true });
     }
+  });
+
+  it("previews exactly the prompt it sends to the model first, without sending anything", async () => {
+    fs.writeFileSync(path.join(projectDir, ".env"), "API_KEY=very-secret-value\n");
+    const logs = 'error: a.txt is still broken (see "./.env")';
+
+    const preview = previewAnalysisPrompt(projectDir, logs);
+    expect(receivedPrompts).toHaveLength(0); // previewing never calls the model
+
+    scriptedReplies.push(reply("a.txt", "a.txt was broken"), reply("b.txt", "b.txt was also broken"));
+    await runRepairWorkflow({ cwd: projectDir, logs, maxAttempts: 3 });
+
+    expect(receivedPrompts[0]).toBe(preview);
+    expect(preview).toContain("a.txt is still broken");
+    expect(preview).not.toContain("very-secret-value");
   });
 
   it("refuses a patch to a secret file, leaves it untouched, then still finishes the repair", async () => {

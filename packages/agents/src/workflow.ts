@@ -14,13 +14,21 @@ function protectionFor(cwd: string) {
   return createProtectedPathRules(getProtectionSettings(cwd));
 }
 
+/**
+ * The exact prompt the first attempt sends to the AI model for these error logs. The repair loop builds its
+ * prompt with this same function, so what you preview is what is sent. Calls no model and changes nothing.
+ */
+export function previewAnalysisPrompt(cwd: string, logs: string): string {
+  return buildAnalysisPrompt(logs, cwd, { rules: protectionFor(cwd) });
+}
+
 // ── Node: call the AI and parse its JSON response ──────────────────────────
 async function analyzeNode(state: typeof GraphState.State) {
   console.log(
     `\n[BugZero] Attempt ${state.attempts + 1}/${state.maxAttempts} — asking AI…`
   );
 
-  const prompt = buildAnalysisPrompt(state.logs, state.cwd, { rules: protectionFor(state.cwd) });
+  const prompt = previewAnalysisPrompt(state.cwd, state.logs);
   const result = await provider.invoke(prompt, { cwd: state.cwd });
   const response = result.content;
 

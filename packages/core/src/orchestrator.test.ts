@@ -3,8 +3,17 @@ import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockInvoke, mockRunValidationPipeline, mockRunRepairWorkflow, mockRunBuild, mockRunLint, mockRunTests } = vi.hoisted(() => ({
+const {
+  mockInvoke,
+  mockRunValidationPipeline,
+  mockRunRepairWorkflow,
+  mockPreviewAnalysisPrompt,
+  mockRunBuild,
+  mockRunLint,
+  mockRunTests,
+} = vi.hoisted(() => ({
   mockInvoke: vi.fn(),
+  mockPreviewAnalysisPrompt: vi.fn(),
   mockRunBuild: vi.fn(),
   mockRunLint: vi.fn(),
   mockRunTests: vi.fn(),
@@ -28,6 +37,7 @@ vi.mock("@opspilot/analyzers", () => ({
 
 vi.mock("@opspilot/agents", () => ({
   runRepairWorkflow: mockRunRepairWorkflow,
+  previewAnalysisPrompt: mockPreviewAnalysisPrompt,
 }));
 
 import { orchestrate, orchestrateAndFix, REPORT_FILENAME } from "./orchestrator";
@@ -236,5 +246,69 @@ describe("hunt with --no-ai-report", () => {
 
     expect(mockInvoke).toHaveBeenCalledTimes(1);
     expect(report()).toContain("AI DIAGNOSIS");
+  });
+});
+
+describe("rescue with printPrompt", () => {
+  let projectDir: string;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    projectDir = fs.mkdtempSync(path.join(os.tmpdir(), "bugzero-print-prompt-test-"));
+    fs.writeFileSync(path.join(projectDir, "package.json"), JSON.stringify({ name: "demo" }));
+    mockPreviewAnalysisPrompt.mockReturnValue("THE EXACT PROMPT");
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    fs.rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  const reportExists = () => fs.existsSync(path.join(projectDir, REPORT_FILENAME));
+
+  it("returns the first prompt for a failing project, and sends and writes nothing", async () => {
+    mockRunValidationPipeline.mockResolvedValue({ success: false, step: "build", output: "error TS2304: nope" });
+
+    const result = await orchestrateAndFix({ cwd: projectDir, printPrompt: true });
+
+    expect(result.promptPreview).toBe("THE EXACT PROMPT");
+    expect(mockPreviewAnalysisPrompt).toHaveBeenCalledWith(projectDir, "error TS2304: nope");
+    expect(mockInvoke).not.toHaveBeenCalled();
+    expect(mockRunRepairWorkflow).not.toHaveBeenCalled();
+    expect(reportExists()).toBe(false);
+  });
+
+  it("has nothing to show for a project that already passes, and writes nothing", async () => {
+    mockRunValidationPipeline.mockResolvedValue({ success: true, step: "none", output: "" });
+
+    const result = await orchestrateAndFix({ cwd: projectDir, printPrompt: true });
+
+    expect(result).toMatchObject({ success: true, attempts: 0 });
+    expect(result.promptPreview).toBeUndefined();
+    expect(mockInvoke).not.toHaveBeenCalled();
+    expect(reportExists()).toBe(false);
+  });
+
+  it("takes precedence over --dry-run, which would otherwise ask the AI for a report", async () => {
+    mockRunValidationPipeline.mockResolvedValue({ success: false, step: "build", output: "boom" });
+
+    const result = await orchestrateAndFix({ cwd: projectDir, printPrompt: true, dryRun: true });
+
+    expect(result.promptPreview).toBe("THE EXACT PROMPT");
+    expect(mockInvoke).not.toHaveBeenCalled();
+    expect(reportExists()).toBe(false);
+  });
+
+  it("does not preview anything on a normal run", async () => {
+    mockRunValidationPipeline.mockResolvedValue({ success: false, step: "build", output: "boom" });
+    mockRunRepairWorkflow.mockResolvedValue({ success: false, attempts: 1, logs: "boom", appliedFix: null });
+    mockInvoke.mockResolvedValue({ content: "r", model: "m", usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
+
+    const result = await orchestrateAndFix({ cwd: projectDir });
+
+    expect(result.promptPreview).toBeUndefined();
+    expect(mockPreviewAnalysisPrompt).not.toHaveBeenCalled();
+    expect(mockRunRepairWorkflow).toHaveBeenCalledTimes(1);
   });
 });

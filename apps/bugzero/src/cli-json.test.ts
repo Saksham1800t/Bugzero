@@ -119,6 +119,56 @@ describe.skipIf(!fs.existsSync(CLI))("bugzero CLI --json", () => {
     expect(report).toMatch(/AI call failed/);
   });
 
+  describe("rescue --print-prompt", () => {
+    // The build names the project's .env in its error, which used to put the file's contents in the prompt.
+    function makeFailingProject() {
+      fs.writeFileSync(
+        path.join(tmpDir, "fail.js"),
+        `console.error('error TS2304: Cannot find name foo while reading "./.env"'); process.exit(1);`
+      );
+      makeProject("node fail.js");
+    }
+
+    it("prints the exact prompt on stdout, sends nothing, writes no report, and exits 0", () => {
+      makeFailingProject();
+
+      const { stdout, stderr, status } = run("rescue", "--print-prompt");
+
+      expect(status).toBe(0);
+      expect(stdout).toContain("You are an expert software engineer specialising in fixing build");
+      expect(stdout).toContain("Cannot find name foo");
+      expect(stdout).not.toContain("BUGZERO_TEST=1"); // the .env contents stay out, as in a real run
+      expect(stderr).toContain("BugZero Fix"); // progress goes to stderr so stdout is only the prompt
+      expect(stdout).not.toContain("BugZero Fix");
+      expect(fs.existsSync(path.join(tmpDir, "bugzero-report.md"))).toBe(false);
+    });
+
+    it("with --json, puts the prompt in the JSON result", () => {
+      makeFailingProject();
+
+      const { stdout, status } = run("rescue", "--print-prompt", "--json");
+      const json = JSON.parse(stdout);
+
+      expect(status).toBe(0);
+      expect(json).toMatchObject({ command: "rescue", outcome: "prompt-preview", success: true, attempts: 0 });
+      expect(json.prompt).toContain("Cannot find name foo");
+    });
+
+    it("says nothing would be sent when the project already passes", () => {
+      makeProject(`node -e "console.log(1)"`);
+
+      const { stdout, stderr, status } = run("rescue", "--print-prompt");
+
+      expect(status).toBe(0);
+      expect(stdout).toBe("");
+      expect(stderr).toMatch(/nothing/i);
+    });
+
+    it("is listed in the help for rescue", () => {
+      expect(run("rescue", "--help").stdout).toContain("--print-prompt");
+    });
+  });
+
   it("lists --no-ai-report in the help for hunt", () => {
     expect(run("hunt", "--help").stdout).toContain("--no-ai-report");
   });

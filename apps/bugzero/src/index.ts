@@ -116,10 +116,13 @@ program
   .option("-n, --max-attempts <number>", "Maximum AI fix attempts", "3")
   .option("-t, --timeout <seconds>", TIMEOUT_DESCRIPTION)
   .option("--dry-run", "Analyse only — print what would be fixed without writing files", false)
+  .option("--print-prompt", "Print the exact prompt that would be sent to the AI model, then stop (nothing is sent, no files are written)")
   .option("--json", JSON_DESCRIPTION)
   .action(async (opts) => {
     const json: boolean = opts.json === true;
-    if (json) routeLogsToStderr();
+    const printPrompt: boolean = opts.printPrompt === true;
+    // stdout must hold only the JSON document or only the prompt, so progress logs go to stderr
+    if (json || printPrompt) routeLogsToStderr();
     try {
       const cwd = path.resolve(opts.path);
       loadProjectEnv(cwd);
@@ -138,7 +141,27 @@ program
       if (dryRun) console.log(`   Mode:        DRY RUN (no files will be modified)`);
       console.log();
 
-      const result = await orchestrateAndFix({ cwd, maxAttempts, dryRun, timeoutSeconds });
+      const result = await orchestrateAndFix({ cwd, maxAttempts, dryRun, timeoutSeconds, printPrompt });
+
+      if (result.promptPreview !== undefined) {
+        // --print-prompt: show the prompt and stop. Nothing was sent to a model.
+        if (json) {
+          finish(
+            0,
+            buildRescueJson(result, {
+              path: cwd,
+              framework,
+              packageManager,
+              dryRun,
+              reportPath: path.resolve(cwd, REPORT_FILENAME),
+            })
+          );
+        } else {
+          process.stdout.write(`${result.promptPreview}
+`, () => process.exit(0));
+        }
+        return;
+      }
 
       console.log("\n──────────────────────────────────────────────");
       const summary = buildRescueSummary(result, { dryRun });
