@@ -9,6 +9,11 @@ Entries for releases before 0.0.45 are not written up yet; see the
 
 ## [Unreleased]
 
+### Internal
+
+- CI now repeats the end of a failed build or test run as an annotation on the job, so a failure can be
+  read without signing in to GitHub.
+
 ## [0.0.55] - 2026-11-21
 
 ### Added

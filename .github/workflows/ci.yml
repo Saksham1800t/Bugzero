@@ -39,7 +39,19 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build all packages
-        run: pnpm build
+        shell: bash
+        # The end of the output is repeated as an annotation, because job logs are not visible without signing in.
+        run: |
+          pnpm build 2>&1 | tee "$RUNNER_TEMP/build.txt" || {
+            echo "::error::build all packages failed: $(tail -c 1500 "$RUNNER_TEMP/build.txt" | tr -s "[:space:]" " ")"
+            exit 1
+          }
 
       - name: Run tests
-        run: pnpm test
+        shell: bash
+        # The end of the output is repeated as an annotation, because job logs are not visible without signing in.
+        run: |
+          pnpm test 2>&1 | tee "$RUNNER_TEMP/test.txt" || {
+            echo "::error::run tests failed: $(tail -c 1500 "$RUNNER_TEMP/test.txt" | tr -s "[:space:]" " ")"
+            exit 1
+          }
