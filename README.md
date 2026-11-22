@@ -218,6 +218,14 @@ When it fixes your project, `rescue` prints a diff of exactly what changed in ea
 bugzero rescue --path /path/to/your/project
 ```
 
+**Review each fix first with `--approve`.** BugZero shows the AI's proposed change as a diff and asks before it writes anything:
+
+```text
+Apply this change? [y] yes  [n] no  [m] no, and leave a note for the AI  (Enter = no):
+```
+
+The whole proposed fix is shown at once, because a fix that spans several files is applied together or not at all. Answer `y` to apply it. Answer `n` (or just press Enter) to decline: nothing is changed, and the AI is told you declined and asked for a different fix, which uses up one attempt. Answer `m` to decline and type a short note that is sent to the AI, such as "leave the config file alone". `--approve` needs an interactive terminal; without one (in CI, or with piped input) it stops immediately, before running anything. It has no effect with `--dry-run` or `--print-prompt`, which never write.
+
 <details>
 <summary><strong>Options for <code>rescue</code></strong></summary>
 
@@ -227,6 +235,7 @@ bugzero rescue --path /path/to/your/project
 | `--max-attempts <n>` | `-n` | `3` | Maximum AI fix iterations before giving up |
 | `--timeout <seconds>` | `-t` | none | Stop any build, lint, or test command that runs longer than this many seconds |
 | `--dry-run` | | `false` | Analyze only — no files will be written |
+| `--approve` | | `false` | Show each proposed fix as a diff and ask before writing it. Needs an interactive terminal |
 | `--print-prompt` | | `false` | Print the exact prompt that would be sent to the AI model, then stop. Nothing is sent and no files are written |
 | `--json` | | `false` | Print the result as one JSON document on stdout (logs go to stderr) |
 

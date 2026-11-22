@@ -130,6 +130,115 @@ describe("repair workflow end to end (fake model, real patcher and pipeline)", (
     }
   });
 
+  describe("asking for approval before writing", () => {
+    type Decision = { approved: true } | { approved: false; note?: string };
+    const approver = (...decisions: Decision[]) => {
+      const requests: any[] = [];
+      const handler = async (request: any): Promise<Decision> => {
+        requests.push(request);
+        return decisions.shift() ?? { approved: true };
+      };
+      return { handler, requests };
+    };
+    const onDisk = (name: string) => fs.readFileSync(path.join(projectDir, name), "utf8");
+
+    it("shows the diff of the proposed fix and applies it once approved", async () => {
+      const { handler, requests } = approver({ approved: true }, { approved: true });
+      scriptedReplies.push(reply("a.txt", "a.txt was broken"), reply("b.txt", "b.txt was also broken"));
+
+      const state = await runRepairWorkflow({
+        cwd: projectDir,
+        logs: "error: a.txt is still broken",
+        maxAttempts: 3,
+        approve: handler,
+      });
+
+      expect(state.success).toBe(true);
+      expect(requests).toHaveLength(2);
+      expect(requests[0]).toMatchObject({
+        attempt: 1,
+        maxAttempts: 3,
+        rootCause: "a.txt was broken",
+        explanation: "Fixed a.txt",
+        files: ["a.txt"],
+      });
+      expect(requests[0].diff).toContain("--- a/a.txt");
+      expect(requests[0].diff).toContain("-state: broken");
+      expect(requests[0].diff).toContain("+state: FIXED");
+      expect(onDisk("a.txt")).toBe("state: FIXED\n");
+    });
+
+    it("writes nothing when the fix is declined, then asks the model again and tells it", async () => {
+      const { handler } = approver({ approved: false, note: "please do not touch a.txt like that" }, { approved: true }, { approved: true });
+      scriptedReplies.push(reply("a.txt", "first idea"), reply("a.txt", "second idea"), reply("b.txt", "b.txt was also broken"));
+
+      const state = await runRepairWorkflow({
+        cwd: projectDir,
+        logs: "error: a.txt is still broken",
+        maxAttempts: 4,
+        approve: handler,
+      });
+
+      // After the first reply was declined the project had not changed at all.
+      expect(receivedPrompts).toHaveLength(3);
+      expect(receivedPrompts[1]).toContain("declined");
+      expect(receivedPrompts[1]).toContain("please do not touch a.txt like that");
+      expect(state.success).toBe(true);
+      expect(state.attempts).toBe(3);
+      expect(state.declinedFixes).toBe(1);
+      expect(state.appliedFix?.patches.map((p) => p.filePath)).toEqual(["a.txt", "b.txt"]);
+    });
+
+    it("leaves every file and backup untouched when every fix is declined", async () => {
+      const { handler } = approver({ approved: false }, { approved: false });
+      scriptedReplies.push(reply("a.txt", "idea one"), reply("a.txt", "idea two"));
+
+      const state = await runRepairWorkflow({
+        cwd: projectDir,
+        logs: "error: a.txt is still broken",
+        maxAttempts: 2,
+        approve: handler,
+      });
+
+      expect(state.success).toBe(false);
+      expect(state.attempts).toBe(2); // a decline uses up an attempt
+      expect(state.declinedFixes).toBe(2);
+      expect(state.appliedFix).toBeNull();
+      expect(onDisk("a.txt")).toBe("state: broken\n");
+      expect(fs.existsSync(path.join(projectDir, "a.txt.opspilot.bak"))).toBe(false);
+    });
+
+    it("does not ask about a fix that could not be applied, and reports the failure to the model as usual", async () => {
+      const { handler, requests } = approver({ approved: true }, { approved: true });
+      const wrongSearch = JSON.stringify({
+        rootCause: "guessed wrong",
+        explanation: "bad search",
+        patches: [{ filePath: "a.txt", search: "text that is not in the file", replace: "FIXED" }],
+      });
+      scriptedReplies.push(wrongSearch, reply("a.txt", "a.txt was broken"), reply("b.txt", "b.txt was also broken"));
+
+      const state = await runRepairWorkflow({
+        cwd: projectDir,
+        logs: "error: a.txt is still broken",
+        maxAttempts: 4,
+        approve: handler,
+      });
+
+      expect(state.success).toBe(true);
+      expect(requests).toHaveLength(2); // only the two fixes that could really be applied
+      expect(receivedPrompts[1]).toContain("Search string not found");
+    });
+
+    it("asks nothing when approval was not requested", async () => {
+      scriptedReplies.push(reply("a.txt", "a.txt was broken"), reply("b.txt", "b.txt was also broken"));
+
+      const state = await runRepairWorkflow({ cwd: projectDir, logs: "error: a.txt is still broken", maxAttempts: 3 });
+
+      expect(state.success).toBe(true);
+      expect(state.declinedFixes).toBe(0);
+    });
+  });
+
   it("previews exactly the prompt it sends to the model first, without sending anything", async () => {
     fs.writeFileSync(path.join(projectDir, ".env"), "API_KEY=very-secret-value\n");
     const logs = 'error: a.txt is still broken (see "./.env")';

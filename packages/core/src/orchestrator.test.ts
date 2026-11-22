@@ -312,3 +312,65 @@ describe("rescue with printPrompt", () => {
     expect(mockRunRepairWorkflow).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("rescue with an approval handler", () => {
+  let projectDir: string;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    projectDir = fs.mkdtempSync(path.join(os.tmpdir(), "bugzero-approve-test-"));
+    fs.writeFileSync(path.join(projectDir, "package.json"), JSON.stringify({ name: "demo" }));
+    mockRunValidationPipeline.mockResolvedValue({ success: false, step: "build", output: "error TS2304: nope" });
+    mockInvoke.mockResolvedValue({ content: "r", model: "m", usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    fs.rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  it("gives the handler to the repair loop", async () => {
+    const approve = vi.fn();
+    mockRunRepairWorkflow.mockResolvedValue({ success: true, attempts: 1, logs: "", appliedFix: null, declinedFixes: 0 });
+
+    await orchestrateAndFix({ cwd: projectDir, approve });
+
+    expect(mockRunRepairWorkflow).toHaveBeenCalledWith(expect.objectContaining({ approve }));
+  });
+
+  it("says so when every proposed fix was declined, rather than blaming the attempt limit", async () => {
+    mockRunRepairWorkflow.mockResolvedValue({ success: false, attempts: 3, logs: "x", appliedFix: null, declinedFixes: 3 });
+
+    const result = await orchestrateAndFix({ cwd: projectDir, maxAttempts: 3, approve: vi.fn() });
+
+    expect(result.success).toBe(false);
+    expect(result.declinedFixes).toBe(3);
+    expect(result.error).toMatch(/declined 3 proposed fixes/i);
+    expect(result.error).toMatch(/nothing was changed/i);
+  });
+
+  it("mentions declined fixes alongside the attempt limit when some other fix was applied", async () => {
+    mockRunRepairWorkflow.mockResolvedValue({
+      success: false,
+      attempts: 3,
+      logs: "x",
+      appliedFix: { rootCause: "r", explanation: "e", patches: [{ filePath: "a.ts", search: "a", replace: "b" }] },
+      declinedFixes: 1,
+    });
+
+    const result = await orchestrateAndFix({ cwd: projectDir, maxAttempts: 3, approve: vi.fn() });
+
+    expect(result.error).toMatch(/Max attempts \(3\) reached/);
+    expect(result.error).toMatch(/declined 1 proposed fix\b/i);
+  });
+
+  it("keeps the usual message when nothing was declined", async () => {
+    mockRunRepairWorkflow.mockResolvedValue({ success: false, attempts: 3, logs: "x", appliedFix: null, declinedFixes: 0 });
+
+    const result = await orchestrateAndFix({ cwd: projectDir, maxAttempts: 3 });
+
+    expect(result.error).toBe("Max attempts (3) reached without a successful build.");
+    expect(result.declinedFixes).toBeUndefined();
+  });
+});

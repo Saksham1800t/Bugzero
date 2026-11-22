@@ -9,6 +9,30 @@ Entries for releases before 0.0.45 are not written up yet; see the
 
 ## [Unreleased]
 
+## [0.0.57] - 2026-11-23
+
+### Added
+
+- **`bugzero rescue --approve` shows each proposed fix and asks before writing it.** The AI's whole fix
+  is shown as a diff, then you answer `y` (apply it), `n` or Enter (decline), or `m` (decline and type a
+  note for the AI). The fix is shown whole, not file by file, because a fix that spans several files is
+  applied together or not at all. Declining changes nothing: the AI is told you declined (and your note,
+  if any) and asked for a different fix, which uses up one attempt, so the run still stops at
+  `--max-attempts`. If every fix was declined, the result says "You declined N proposed fixes, so nothing
+  was changed" instead of blaming the attempt limit.
+- **Without a terminal, `--approve` stops immediately** with a clear message, before running your build or
+  contacting the AI. It never writes without being asked, and never skips the question silently. With
+  `--json`, that is reported as a JSON error. It has no effect with `--dry-run` or `--print-prompt`, which
+  never write.
+- The diff shown is exactly what would be written: it is built by the same code that applies the patch
+  (`previewPatches` in `@opspilot/patcher`), and it refuses the same things (paths outside the project,
+  protected files, a search text that is not found). A fix that cannot be applied is reported to the AI as
+  before and you are not asked about it.
+
+### Docs
+
+- `docs/PRIVACY.md` notes that a declined fix, and any note you type with it, is sent to the AI.
+
 ## [0.0.56] - 2026-11-22
 
 ### Added

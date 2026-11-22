@@ -1,5 +1,5 @@
 import { Annotation } from "@langchain/langgraph";
-import type { AIFixSuggestion } from "@opspilot/shared";
+import type { AIFixSuggestion, ApprovalHandler } from "@opspilot/shared";
 
 export const GraphState = Annotation.Root({
   /** Absolute path to the project being fixed */
@@ -85,6 +85,16 @@ export const GraphState = Annotation.Root({
   /** Total completion tokens used */
   completionTokens: Annotation<number>({
     reducer: (old, value) => old + value,
+    default: () => 0,
+  }),
+  /** When set, each proposed fix is shown to this handler and only written if it approves */
+  approve: Annotation<ApprovalHandler | undefined>({
+    reducer: (_, value) => value,
+    default: () => undefined,
+  }),
+  /** How many proposed fixes the person declined */
+  declinedFixes: Annotation<number>({
+    reducer: (total, added) => total + added,
     default: () => 0,
   }),
   /** Per-command timeout in milliseconds for validation steps (undefined = no limit) */

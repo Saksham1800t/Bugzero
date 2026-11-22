@@ -3,9 +3,9 @@ import { GraphState } from "./state";
 import { OpenRouterProvider } from "@opspilot/ai-provider";
 import { buildAnalysisPrompt } from "@opspilot/prompts";
 import { getProtectionSettings } from "@opspilot/config";
-import { applyPatches } from "@opspilot/patcher";
+import { applyPatches, previewPatches, renderUnifiedDiff } from "@opspilot/patcher";
 import { runValidationPipeline } from "@opspilot/analyzers";
-import { createProtectedPathRules, type AIFixSuggestion } from "@opspilot/shared";
+import { createProtectedPathRules, type AIFixSuggestion, type ApprovalHandler } from "@opspilot/shared";
 
 const provider = new OpenRouterProvider();
 
@@ -63,6 +63,16 @@ async function analyzeNode(state: typeof GraphState.State) {
   };
 }
 
+/** The state update for a fix that could not be applied: tell the model why, and skip verifying this attempt. */
+function patchFailure(state: typeof GraphState.State, error: string | undefined) {
+  console.error(`[BugZero] Patch failed: ${error}`);
+  const updatedLogs = `${state.logs}\n\n⚠️ [BugZero System Warning] Your previous patch suggestion failed with the following error:\n- ${error}\n\nAny other files from that same suggestion were rolled back to keep the change atomic. Please check if the file path(s) are correct relative to the project root and make sure you target the correct file(s) that contain the build error.`;
+  return {
+    logs: updatedLogs,
+    patchFailed: true,
+  };
+}
+
 // ── Node: apply the patch suggested by the AI ──────────────────────────────
 async function applyFixNode(state: typeof GraphState.State) {
   if (!state.fixSuggestion) {
@@ -76,18 +86,34 @@ async function applyFixNode(state: typeof GraphState.State) {
   console.log(`[BugZero] Patching ${patches.length} file${patches.length === 1 ? "" : "s"}: ${fileList}`);
   console.log(`[BugZero] Reason:   ${explanation}`);
 
+  if (state.approve) {
+    // Work out exactly what would be written, without writing it, and let the person decide.
+    const preview = previewPatches(state.cwd, patches, { protection: protectionFor(state.cwd) });
+    if (!preview.success) return patchFailure(state, preview.error);
+
+    const files = preview.changes.map((change) => change.filePath);
+    const decision = await state.approve({
+      attempt: state.attempts,
+      maxAttempts: state.maxAttempts,
+      rootCause: state.fixSuggestion.rootCause,
+      explanation,
+      files,
+      diff: renderUnifiedDiff(preview.changes),
+    });
+    if (!decision.approved) {
+      console.log("[BugZero] Fix declined — nothing was changed.");
+      const note = decision.note?.trim();
+      const userNote = note ? ` The user's note: "${note}".` : "";
+      const declinedLogs = `${state.logs}\n\n⚠️ [BugZero System Warning] Your previous patch suggestion was declined by the user, so nothing was changed. The files it would have changed were: ${files.join(", ")}.${userNote} Propose a different fix.`;
+      return { logs: declinedLogs, patchFailed: true, declinedFixes: 1 };
+    }
+  }
+
   const result = applyPatches(state.cwd, patches, {
     alreadyBackedUp: state.backedUpFiles,
     protection: protectionFor(state.cwd),
   });
-  if (!result.success) {
-    console.error(`[BugZero] Patch failed: ${result.error}`);
-    const updatedLogs = `${state.logs}\n\n⚠️ [BugZero System Warning] Your previous patch suggestion failed with the following error:\n- ${result.error}\n\nAny other files from that same suggestion were rolled back to keep the change atomic. Please check if the file path(s) are correct relative to the project root and make sure you target the correct file(s) that contain the build error.`;
-    return {
-      logs: updatedLogs,
-      patchFailed: true,
-    };
-  }
+  if (!result.success) return patchFailure(state, result.error);
 
   for (const applied of result.applied) {
     console.log(`[BugZero] Backup saved to: ${applied.backupPath}`);
@@ -160,6 +186,8 @@ export interface RepairInput {
   maxAttempts: number;
   /** Per-command timeout in milliseconds for each validation step (default: no limit) */
   timeoutMs?: number;
+  /** When given, each proposed fix is shown to it first and is only written if it approves */
+  approve?: ApprovalHandler;
 }
 
 /**

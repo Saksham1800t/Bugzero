@@ -14,6 +14,7 @@ import {
   REPORT_FILENAME,
 } from "@opspilot/core";
 import { buildErrorJson, buildHuntJson, buildRescueJson } from "./json-output";
+import { createApprovalHandler } from "./approval";
 import { buildChangeDiffLines, buildRescueSummary } from "./summary";
 
 // The current folder's .env, so commands without --path find the API key. hunt and rescue load the
@@ -116,6 +117,7 @@ program
   .option("-n, --max-attempts <number>", "Maximum AI fix attempts", "3")
   .option("-t, --timeout <seconds>", TIMEOUT_DESCRIPTION)
   .option("--dry-run", "Analyse only — print what would be fixed without writing files", false)
+  .option("--approve", "Show each proposed fix as a diff and ask before writing it (needs an interactive terminal)")
   .option("--print-prompt", "Print the exact prompt that would be sent to the AI model, then stop (nothing is sent, no files are written)")
   .option("--json", JSON_DESCRIPTION)
   .action(async (opts) => {
@@ -129,6 +131,18 @@ program
       const maxAttempts = resolveMaxAttempts(Number(opts.maxAttempts));
       const timeoutSeconds = parseTimeout(opts.timeout);
       const dryRun: boolean = opts.dryRun;
+
+      // Approval only matters when something would be written, so --dry-run and --print-prompt do not need it.
+      // Without a terminal nobody can answer: stop now, before running anything or spending any tokens.
+      let approve: ReturnType<typeof createApprovalHandler> | undefined;
+      if (opts.approve === true && !dryRun && !printPrompt) {
+        if (!process.stdin.isTTY || !process.stderr.isTTY) {
+          throw new Error(
+            "--approve asks you to confirm each fix, which needs an interactive terminal, and there is none here (for example in CI, or when input is piped). Run it in a terminal, or leave out --approve."
+          );
+        }
+        approve = createApprovalHandler({ input: process.stdin, output: process.stderr });
+      }
       const framework = detectFramework(cwd);
       const packageManager = detectPackageManager(cwd);
 
@@ -141,7 +155,7 @@ program
       if (dryRun) console.log(`   Mode:        DRY RUN (no files will be modified)`);
       console.log();
 
-      const result = await orchestrateAndFix({ cwd, maxAttempts, dryRun, timeoutSeconds, printPrompt });
+      const result = await orchestrateAndFix({ cwd, maxAttempts, dryRun, timeoutSeconds, printPrompt, approve });
 
       if (result.promptPreview !== undefined) {
         // --print-prompt: show the prompt and stop. Nothing was sent to a model.

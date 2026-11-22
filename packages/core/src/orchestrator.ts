@@ -1,6 +1,6 @@
 import { runBuild, runLint, runTests, parseErrors, runValidationPipeline } from "@opspilot/analyzers";
 import { previewAnalysisPrompt, runRepairWorkflow } from "@opspilot/agents";
-import { uniqueFilePaths, type FixResult } from "@opspilot/shared";
+import { uniqueFilePaths, type ApprovalHandler, type FixResult } from "@opspilot/shared";
 import fs from "fs";
 import path from "path";
 import { pathToFileURL } from "url";
@@ -13,6 +13,16 @@ import { buildHuntDiagnosisPrompt, buildRescueFailurePrompt, buildRescueSuccessP
 
 /** Name of the Markdown report written into the target project by `hunt` and `rescue`. */
 export const REPORT_FILENAME = "bugzero-report.md";
+
+/** Why a repair ended without success. Fixes the person declined are called out, not blamed on the attempt limit. */
+function failureMessage(maxAttempts: number, declined: number, appliedAnything: boolean): string {
+  const plural = declined === 1 ? "fix" : "fixes";
+  if (declined > 0 && !appliedAnything) {
+    return `You declined ${declined} proposed ${plural}, so nothing was changed.`;
+  }
+  const base = `Max attempts (${maxAttempts}) reached without a successful build.`;
+  return declined > 0 ? `${base} You declined ${declined} proposed ${plural}.` : base;
+}
 
 function statusLabel(result: { success: boolean; skipped?: boolean }): string {
   if (result.skipped) return "⏭️ Skipped (no script defined)";
@@ -35,6 +45,8 @@ export interface OrchestrateOptions {
    * `promptPreview` without sending it, repairing anything, or writing a report.
    */
   printPrompt?: boolean;
+  /** `rescue` only: when given, each proposed fix is shown to it first and is only written if it approves */
+  approve?: ApprovalHandler;
 }
 
 /** Run build, lint and tests — return raw results without touching files. */
@@ -130,6 +142,7 @@ export async function orchestrateAndFix(
     logs: pipelineResult.output,
     maxAttempts,
     timeoutMs,
+    approve: options.approve,
   });
 
   const result = {
@@ -137,9 +150,8 @@ export async function orchestrateAndFix(
     attempts: finalState.attempts,
     finalOutput: finalState.logs || pipelineResult.output,
     appliedFix: finalState.appliedFix ?? undefined,
-    error: finalState.success
-      ? undefined
-      : `Max attempts (${maxAttempts}) reached without a successful build.`,
+    error: finalState.success ? undefined : failureMessage(maxAttempts, finalState.declinedFixes ?? 0, Boolean(finalState.appliedFix)),
+    declinedFixes: finalState.declinedFixes ? finalState.declinedFixes : undefined,
     modelUsed: finalState.modelUsed,
     promptTokens: finalState.promptTokens,
     completionTokens: finalState.completionTokens,

@@ -37,7 +37,7 @@ Each attempt sends one prompt containing:
    shortened to about 20,000 characters, and the files together to about 60,000 characters.
 4. **The names of the files in the folder** of each mentioned file, and, when a mentioned folder holds 15 files
    or fewer, the contents of its `.js`, `.jsx`, `.ts`, `.tsx`, `.json` and `.css` files.
-5. **Notes from earlier failed attempts** in the same run, such as "that patch did not apply".
+5. **Notes from earlier failed attempts** in the same run, such as "that patch did not apply", or, with `--approve`, that you declined a fix and any note you typed with it.
 
 After the run, one more call writes `bugzero-report.md`. It contains the root cause, the explanation, the
 search and replace text of the patches (when the fix worked), or the unresolved error output, shortened to about

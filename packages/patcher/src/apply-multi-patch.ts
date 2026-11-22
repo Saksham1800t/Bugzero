@@ -1,12 +1,8 @@
-import {
-  createProtectedPathRules,
-  projectRelativePaths,
-  resolveInsideProject,
-  type ProtectedPathRules,
-} from "@opspilot/shared";
+import type { ProtectedPathRules } from "@opspilot/shared";
 import fs from "fs";
 import { applyPatch } from "./apply-patch";
 import { MatchStrategy } from "./fuzzy-match";
+import { resolvePatchTargets } from "./patch-targets";
 
 export interface FilePatch {
   /** Relative path from `cwd` to the file that needs changing */
@@ -80,30 +76,11 @@ export function applyPatches(
 
   // Check every path before touching anything: a model-supplied path must stay inside the
   // project and must not be a protected file, and one bad path means no file at all is changed.
-  const protection = options.protection ?? createProtectedPathRules();
-  const absolutePaths: string[] = [];
-  for (const patch of patches) {
-    const resolved = resolveInsideProject(cwd, patch.filePath);
-    if (!resolved.ok) {
-      return {
-        success: false,
-        error: `Failed to patch "${patch.filePath}": ${resolved.error}`,
-        applied: [],
-      };
-    }
-    // Check where the file appears to be and where it really is, so a link cannot hide a protected file.
-    for (const relPath of projectRelativePaths(cwd, resolved.absolutePath)) {
-      const pattern = protection.editBlockedBy(relPath);
-      if (pattern !== undefined) {
-        return {
-          success: false,
-          error: `Failed to patch "${patch.filePath}": this file is protected (it matches "${pattern}"), so BugZero never edits it. Fix the problem in a different file.`,
-          applied: [],
-        };
-      }
-    }
-    absolutePaths.push(resolved.absolutePath);
+  const targets = resolvePatchTargets(cwd, patches, options.protection);
+  if (!targets.ok) {
+    return { success: false, error: targets.error, applied: [] };
   }
+  const absolutePaths = targets.absolutePaths;
 
   const originalContent = new Map<string, string>();
   const backupPaths = new Set<string>();

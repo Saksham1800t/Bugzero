@@ -52,4 +52,25 @@ export interface FixResult {
    * the exact text that would have been sent to the AI model. Nothing was sent.
    */
   promptPreview?: string;
-}
+  /** How many proposed fixes the person declined (only set when approval was requested and some were declined) */
+  declinedFixes?: number;
+}
+
+/** What a person is shown before a proposed fix is written (see `rescue --approve`). */
+export interface ApprovalRequest {
+  /** Which attempt this fix came from, starting at 1 */
+  attempt: number;
+  maxAttempts: number;
+  rootCause: string;
+  explanation: string;
+  /** The files the fix would change */
+  files: string[];
+  /** The whole fix as a unified diff */
+  diff: string;
+}
+
+/** The person's answer. A note on a declined fix is passed on to the AI for its next attempt. */
+export type ApprovalDecision = { approved: true } | { approved: false; note?: string };
+
+/** Asks whether a proposed fix may be written. Nothing is changed until it answers `approved: true`. */
+export type ApprovalHandler = (request: ApprovalRequest) => Promise<ApprovalDecision>;

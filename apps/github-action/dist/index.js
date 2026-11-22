@@ -111605,8 +111605,11 @@ var require_dist12 = __commonJS({
       applyPatches: () => applyPatches,
       findMatch: () => findMatch,
       lineSimilarity: () => lineSimilarity,
+      patchContent: () => patchContent,
+      previewPatches: () => previewPatches,
       renderChangesFromBackups: () => renderChangesFromBackups,
-      renderUnifiedDiff: () => renderUnifiedDiff
+      renderUnifiedDiff: () => renderUnifiedDiff,
+      resolvePatchTargets: () => resolvePatchTargets
     });
     module2.exports = __toCommonJS2(index_exports);
     var import_fs2 = __toESM2(require("fs"));
@@ -111730,6 +111733,18 @@ var require_dist12 = __commonJS({
     function withLineEnding(text, ending) {
       return text.replace(/\r\n|\n/g, ending);
     }
+    function patchContent(original, search, replace, fileName) {
+      const match = findMatch(original, search);
+      if (!match) {
+        return {
+          ok: false,
+          error: `Search string not found in ${fileName} (tried exact, whitespace-normalized, and fuzzy matching). The AI's "search" field did not match file content.`
+        };
+      }
+      const replacement = withLineEnding(replace, detectLineEnding(original, match.start, match.end));
+      const content = original.slice(0, match.start) + replacement + original.slice(match.end);
+      return { ok: true, content, matchStrategy: match.strategy };
+    }
     function applyPatch(absoluteFilePath, search, replace, options = {}) {
       try {
         if (!import_fs2.default.existsSync(absoluteFilePath)) {
@@ -111739,27 +111754,40 @@ var require_dist12 = __commonJS({
           };
         }
         const original = import_fs2.default.readFileSync(absoluteFilePath, "utf-8");
-        const match = findMatch(original, search);
-        if (!match) {
-          return {
-            success: false,
-            error: `Search string not found in ${import_path2.default.basename(absoluteFilePath)} (tried exact, whitespace-normalized, and fuzzy matching). The AI's "search" field did not match file content.`
-          };
-        }
+        const patched = patchContent(original, search, replace, import_path2.default.basename(absoluteFilePath));
+        if (!patched.ok) return { success: false, error: patched.error };
         const backupPath = absoluteFilePath + ".opspilot.bak";
         if (options.backup !== false) {
           import_fs2.default.writeFileSync(backupPath, original, "utf-8");
         }
-        const replacement = withLineEnding(replace, detectLineEnding(original, match.start, match.end));
-        const fixed = original.slice(0, match.start) + replacement + original.slice(match.end);
-        import_fs2.default.writeFileSync(absoluteFilePath, fixed, "utf-8");
-        return { success: true, backupPath, matchStrategy: match.strategy };
+        import_fs2.default.writeFileSync(absoluteFilePath, patched.content, "utf-8");
+        return { success: true, backupPath, matchStrategy: patched.matchStrategy };
       } catch (err) {
         return { success: false, error: err.message };
       }
     }
-    var import_shared2 = require_dist9();
     var import_fs22 = __toESM2(require("fs"));
+    var import_shared2 = require_dist9();
+    function resolvePatchTargets(cwd, patches, protection = (0, import_shared2.createProtectedPathRules)()) {
+      const absolutePaths = [];
+      for (const patch of patches) {
+        const resolved = (0, import_shared2.resolveInsideProject)(cwd, patch.filePath);
+        if (!resolved.ok) {
+          return { ok: false, error: `Failed to patch "${patch.filePath}": ${resolved.error}` };
+        }
+        for (const relPath of (0, import_shared2.projectRelativePaths)(cwd, resolved.absolutePath)) {
+          const pattern = protection.editBlockedBy(relPath);
+          if (pattern !== void 0) {
+            return {
+              ok: false,
+              error: `Failed to patch "${patch.filePath}": this file is protected (it matches "${pattern}"), so BugZero never edits it. Fix the problem in a different file.`
+            };
+          }
+        }
+        absolutePaths.push(resolved.absolutePath);
+      }
+      return { ok: true, absolutePaths };
+    }
     function rollback(originalContent, backupPaths) {
       for (const [absolutePath, content] of originalContent) {
         try {
@@ -111778,29 +111806,11 @@ var require_dist12 = __commonJS({
       if (patches.length === 0) {
         return { success: false, error: "No patches to apply.", applied: [] };
       }
-      const protection = options.protection ?? (0, import_shared2.createProtectedPathRules)();
-      const absolutePaths = [];
-      for (const patch of patches) {
-        const resolved = (0, import_shared2.resolveInsideProject)(cwd, patch.filePath);
-        if (!resolved.ok) {
-          return {
-            success: false,
-            error: `Failed to patch "${patch.filePath}": ${resolved.error}`,
-            applied: []
-          };
-        }
-        for (const relPath of (0, import_shared2.projectRelativePaths)(cwd, resolved.absolutePath)) {
-          const pattern = protection.editBlockedBy(relPath);
-          if (pattern !== void 0) {
-            return {
-              success: false,
-              error: `Failed to patch "${patch.filePath}": this file is protected (it matches "${pattern}"), so BugZero never edits it. Fix the problem in a different file.`,
-              applied: []
-            };
-          }
-        }
-        absolutePaths.push(resolved.absolutePath);
+      const targets = resolvePatchTargets(cwd, patches, options.protection);
+      if (!targets.ok) {
+        return { success: false, error: targets.error, applied: [] };
       }
+      const absolutePaths = targets.absolutePaths;
       const originalContent = /* @__PURE__ */ new Map();
       const backupPaths = /* @__PURE__ */ new Set();
       const applied = [];
@@ -112005,6 +112015,41 @@ var require_dist12 = __commonJS({
       }
       return renderUnifiedDiff(changes, options);
     }
+    var import_fs4 = __toESM2(require("fs"));
+    var import_path3 = __toESM2(require("path"));
+    function previewPatches(cwd, patches, options = {}) {
+      if (patches.length === 0) {
+        return { success: false, error: "No patches to apply." };
+      }
+      const targets = resolvePatchTargets(cwd, patches, options.protection);
+      if (!targets.ok) return { success: false, error: targets.error };
+      const originals = /* @__PURE__ */ new Map();
+      const current = /* @__PURE__ */ new Map();
+      for (const [index, patch] of patches.entries()) {
+        const absolutePath = targets.absolutePaths[index];
+        if (!current.has(absolutePath)) {
+          try {
+            const content = import_fs4.default.readFileSync(absolutePath, "utf-8");
+            originals.set(absolutePath, content);
+            current.set(absolutePath, content);
+          } catch {
+            return { success: false, error: `Failed to patch "${patch.filePath}": File not found: ${absolutePath}` };
+          }
+        }
+        const patched = patchContent(current.get(absolutePath), patch.search, patch.replace, import_path3.default.basename(absolutePath));
+        if (!patched.ok) {
+          return { success: false, error: `Failed to patch "${patch.filePath}": ${patched.error}` };
+        }
+        current.set(absolutePath, patched.content);
+      }
+      const root = import_path3.default.resolve(cwd);
+      const changes = [...originals.keys()].map((absolutePath) => ({
+        filePath: import_path3.default.relative(root, absolutePath).split(import_path3.default.sep).join("/"),
+        before: originals.get(absolutePath),
+        after: current.get(absolutePath)
+      }));
+      return { success: true, changes };
+    }
   }
 });
 
@@ -112121,6 +112166,16 @@ var require_dist13 = __commonJS({
         reducer: (old, value) => old + value,
         default: () => 0
       }),
+      /** When set, each proposed fix is shown to this handler and only written if it approves */
+      approve: (0, import_langgraph.Annotation)({
+        reducer: (_, value) => value,
+        default: () => void 0
+      }),
+      /** How many proposed fixes the person declined */
+      declinedFixes: (0, import_langgraph.Annotation)({
+        reducer: (total, added) => total + added,
+        default: () => 0
+      }),
       /** Per-command timeout in milliseconds for validation steps (undefined = no limit) */
       timeoutMs: (0, import_langgraph.Annotation)({
         reducer: (_, value) => value,
@@ -112174,6 +112229,19 @@ var require_dist13 = __commonJS({
         completionTokens: result.usage?.completion_tokens ?? 0
       };
     }
+    function patchFailure(state, error) {
+      console.error(`[BugZero] Patch failed: ${error}`);
+      const updatedLogs = `${state.logs}
+
+\u26A0\uFE0F [BugZero System Warning] Your previous patch suggestion failed with the following error:
+- ${error}
+
+Any other files from that same suggestion were rolled back to keep the change atomic. Please check if the file path(s) are correct relative to the project root and make sure you target the correct file(s) that contain the build error.`;
+      return {
+        logs: updatedLogs,
+        patchFailed: true
+      };
+    }
     async function applyFixNode(state) {
       if (!state.fixSuggestion) {
         console.warn("[BugZero] No fix suggestion available \u2014 skipping patch.");
@@ -112183,23 +112251,33 @@ var require_dist13 = __commonJS({
       const fileList = patches.map((p) => p.filePath).join(", ");
       console.log(`[BugZero] Patching ${patches.length} file${patches.length === 1 ? "" : "s"}: ${fileList}`);
       console.log(`[BugZero] Reason:   ${explanation}`);
+      if (state.approve) {
+        const preview = (0, import_patcher.previewPatches)(state.cwd, patches, { protection: protectionFor(state.cwd) });
+        if (!preview.success) return patchFailure(state, preview.error);
+        const files = preview.changes.map((change) => change.filePath);
+        const decision = await state.approve({
+          attempt: state.attempts,
+          maxAttempts: state.maxAttempts,
+          rootCause: state.fixSuggestion.rootCause,
+          explanation,
+          files,
+          diff: (0, import_patcher.renderUnifiedDiff)(preview.changes)
+        });
+        if (!decision.approved) {
+          console.log("[BugZero] Fix declined \u2014 nothing was changed.");
+          const note = decision.note?.trim();
+          const userNote = note ? ` The user's note: "${note}".` : "";
+          const declinedLogs = `${state.logs}
+
+\u26A0\uFE0F [BugZero System Warning] Your previous patch suggestion was declined by the user, so nothing was changed. The files it would have changed were: ${files.join(", ")}.${userNote} Propose a different fix.`;
+          return { logs: declinedLogs, patchFailed: true, declinedFixes: 1 };
+        }
+      }
       const result = (0, import_patcher.applyPatches)(state.cwd, patches, {
         alreadyBackedUp: state.backedUpFiles,
         protection: protectionFor(state.cwd)
       });
-      if (!result.success) {
-        console.error(`[BugZero] Patch failed: ${result.error}`);
-        const updatedLogs = `${state.logs}
-
-\u26A0\uFE0F [BugZero System Warning] Your previous patch suggestion failed with the following error:
-- ${result.error}
-
-Any other files from that same suggestion were rolled back to keep the change atomic. Please check if the file path(s) are correct relative to the project root and make sure you target the correct file(s) that contain the build error.`;
-        return {
-          logs: updatedLogs,
-          patchFailed: true
-        };
-      }
+      if (!result.success) return patchFailure(state, result.error);
       for (const applied of result.applied) {
         console.log(`[BugZero] Backup saved to: ${applied.backupPath}`);
         if (applied.matchStrategy !== "exact") {
@@ -112463,6 +112541,14 @@ Re-run without \`--dry-run\` to let BugZero attempt a fix.
     }
     var import_ai_provider = require_dist8();
     var REPORT_FILENAME = "bugzero-report.md";
+    function failureMessage(maxAttempts, declined, appliedAnything) {
+      const plural = declined === 1 ? "fix" : "fixes";
+      if (declined > 0 && !appliedAnything) {
+        return `You declined ${declined} proposed ${plural}, so nothing was changed.`;
+      }
+      const base = `Max attempts (${maxAttempts}) reached without a successful build.`;
+      return declined > 0 ? `${base} You declined ${declined} proposed ${plural}.` : base;
+    }
     function statusLabel(result) {
       if (result.skipped) return "\u23ED\uFE0F Skipped (no script defined)";
       return result.success ? "\u2705 Passed" : "\u274C Failed";
@@ -112539,14 +112625,16 @@ Re-run without \`--dry-run\` to let BugZero attempt a fix.
         cwd,
         logs: pipelineResult.output,
         maxAttempts,
-        timeoutMs
+        timeoutMs,
+        approve: options.approve
       });
       const result = {
         success: finalState.success,
         attempts: finalState.attempts,
         finalOutput: finalState.logs || pipelineResult.output,
         appliedFix: finalState.appliedFix ?? void 0,
-        error: finalState.success ? void 0 : `Max attempts (${maxAttempts}) reached without a successful build.`,
+        error: finalState.success ? void 0 : failureMessage(maxAttempts, finalState.declinedFixes ?? 0, Boolean(finalState.appliedFix)),
+        declinedFixes: finalState.declinedFixes ? finalState.declinedFixes : void 0,
         modelUsed: finalState.modelUsed,
         promptTokens: finalState.promptTokens,
         completionTokens: finalState.completionTokens

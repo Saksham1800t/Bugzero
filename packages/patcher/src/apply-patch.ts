@@ -15,6 +15,32 @@ export interface PatchResult {
   matchStrategy?: MatchStrategy;
 }
 
+export type PatchedContent =
+  | { ok: true; content: string; matchStrategy: MatchStrategy }
+  | { ok: false; error: string };
+
+/**
+ * Applies one search-and-replace patch to text, in memory. This is the single place that decides where a patch
+ * lands and what the result is, so previewing a patch and applying it can never disagree.
+ *
+ * @param fileName - Only used in the error message
+ */
+export function patchContent(original: string, search: string, replace: string, fileName: string): PatchedContent {
+  const match = findMatch(original, search);
+  if (!match) {
+    return {
+      ok: false,
+      error: `Search string not found in ${fileName} (tried exact, whitespace-normalized, and fuzzy matching). The AI's "search" field did not match file content.`,
+    };
+  }
+
+  // Replace only the matched region to stay minimal. The AI writes "\n" line breaks whatever the file uses,
+  // so give the new text the line ending of the lines it replaces.
+  const replacement = withLineEnding(replace, detectLineEnding(original, match.start, match.end));
+  const content = original.slice(0, match.start) + replacement + original.slice(match.end);
+  return { ok: true, content, matchStrategy: match.strategy };
+}
+
 /**
  * Applies a search-and-replace patch to a file.
  * Creates a `.opspilot.bak` backup before writing.
@@ -47,13 +73,8 @@ export function applyPatch(
 
     const original = fs.readFileSync(absoluteFilePath, "utf-8");
 
-    const match = findMatch(original, search);
-    if (!match) {
-      return {
-        success: false,
-        error: `Search string not found in ${path.basename(absoluteFilePath)} (tried exact, whitespace-normalized, and fuzzy matching). The AI's "search" field did not match file content.`,
-      };
-    }
+    const patched = patchContent(original, search, replace, path.basename(absoluteFilePath));
+    if (!patched.ok) return { success: false, error: patched.error };
 
     // Write backup first (replacing any older one)
     const backupPath = absoluteFilePath + ".opspilot.bak";
@@ -61,13 +82,9 @@ export function applyPatch(
       fs.writeFileSync(backupPath, original, "utf-8");
     }
 
-    // Apply fix (replace only the matched region to stay minimal). The AI writes "\n" line breaks
-    // whatever the file uses, so give the new text the line ending of the lines it replaces.
-    const replacement = withLineEnding(replace, detectLineEnding(original, match.start, match.end));
-    const fixed = original.slice(0, match.start) + replacement + original.slice(match.end);
-    fs.writeFileSync(absoluteFilePath, fixed, "utf-8");
+    fs.writeFileSync(absoluteFilePath, patched.content, "utf-8");
 
-    return { success: true, backupPath, matchStrategy: match.strategy };
+    return { success: true, backupPath, matchStrategy: patched.matchStrategy };
   } catch (err: any) {
     return { success: false, error: err.message };
   }

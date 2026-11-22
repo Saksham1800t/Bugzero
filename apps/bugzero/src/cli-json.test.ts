@@ -119,6 +119,61 @@ describe.skipIf(!fs.existsSync(CLI))("bugzero CLI --json", () => {
     expect(report).toMatch(/AI call failed/);
   });
 
+  describe("rescue --approve", () => {
+    // The build leaves a marker behind, so a test can tell whether the project's commands were run at all.
+    function makeMarkerProject() {
+      fs.writeFileSync(path.join(tmpDir, "build.js"), `require("fs").writeFileSync("ran.txt", "x"); process.exit(1);`);
+      makeProject("node build.js");
+    }
+    const ran = () => fs.existsSync(path.join(tmpDir, "ran.txt"));
+
+    it("stops straight away, before running anything, when there is no terminal to answer in", () => {
+      makeMarkerProject();
+
+      const { stdout, stderr, status } = run("rescue", "--approve");
+
+      expect(status).toBe(1);
+      expect(stderr).toMatch(/interactive terminal/i);
+      expect(stderr).toContain("--approve");
+      expect(stdout).toBe("");
+      expect(ran()).toBe(false); // the build was never run, and no AI tokens were spent
+      expect(fs.existsSync(path.join(tmpDir, "bugzero-report.md"))).toBe(false);
+    });
+
+    it("reports that as a JSON error in --json mode", () => {
+      makeMarkerProject();
+
+      const { stdout, status } = run("rescue", "--approve", "--json");
+      const json = JSON.parse(stdout);
+
+      expect(status).toBe(1);
+      expect(json.success).toBe(false);
+      expect(json.error).toMatch(/interactive terminal/i);
+      expect(ran()).toBe(false);
+    });
+
+    it("has no effect on --dry-run, which never writes anything, so it needs no terminal", () => {
+      makeMarkerProject();
+
+      const { stdout } = run("rescue", "--approve", "--dry-run", "--json");
+
+      expect(JSON.parse(stdout)).toMatchObject({ outcome: "dry-run" });
+    });
+
+    it("has no effect on --print-prompt, which never writes anything either", () => {
+      makeMarkerProject();
+
+      const { stdout, status } = run("rescue", "--approve", "--print-prompt");
+
+      expect(status).toBe(0);
+      expect(stdout).toContain("You are an expert software engineer");
+    });
+
+    it("is listed in the help for rescue", () => {
+      expect(run("rescue", "--help").stdout).toContain("--approve");
+    });
+  });
+
   describe("rescue --print-prompt", () => {
     // The build names the project's .env in its error, which used to put the file's contents in the prompt.
     function makeFailingProject() {
