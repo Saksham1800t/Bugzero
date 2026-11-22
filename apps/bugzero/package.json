@@ -55,6 +55,7 @@
     "@opspilot/agents": "workspace:*",
     "@opspilot/config": "workspace:*",
     "@opspilot/core": "workspace:*",
+    "@opspilot/patcher": "workspace:*",
     "@opspilot/shared": "workspace:*"
   },
   "main": "./dist/index.js",

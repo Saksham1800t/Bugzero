@@ -9,8 +9,23 @@ Entries for releases before 0.0.45 are not written up yet; see the
 
 ## [Unreleased]
 
+## [0.0.56] - 2026-11-22
+
+### Added
+
+- **`rescue` now prints a diff of what it changed.** After a successful fix, the output ends with a
+  unified diff, in the format `git diff` uses, of every file that was edited, compared with the original
+  saved next to it as `<file>.opspilot.bak`. A file edited more than once is shown once, as a single
+  before-and-after. Very long lines are shortened with a note of how much was left out. The diff is
+  plain text and only in the human-readable output; `--json` is unchanged.
+
 ### Internal
 
+- New diff renderer in `@opspilot/patcher` (`renderUnifiedDiff`, `renderChangesFromBackups`), a pure
+  function that the planned `--approve` option will reuse. Besides unit tests, several thousand randomly
+  generated diffs were applied with `git apply` and each result checked against the intended file. Very large
+  or completely different files fall back to "everything removed, everything added" so time and memory
+  stay bounded.
 - CI now repeats the end of a failed build or test run as an annotation on the job, so a failure can be
   read without signing in to GitHub.
 

@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { buildRescueSummary } from "./summary";
+import fs from "fs";
+import os from "os";
+import path from "path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { buildChangeDiffLines, buildRescueSummary } from "./summary";
 
 const appliedFix = {
   rootCause: "Missing semicolon",
@@ -121,5 +124,55 @@ describe("buildRescueSummary", () => {
 
     expect(summary.exitCode).toBe(0);
     expect(summary.lines[0]).toContain("Nothing to fix");
+  });
+});
+
+describe("buildChangeDiffLines", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "bugzero-summary-diff-test-"));
+    fs.mkdirSync(path.join(dir, "src"));
+    fs.writeFileSync(path.join(dir, "src", "index.ts"), "export const a = 2;\n");
+    fs.writeFileSync(path.join(dir, "src", "index.ts.opspilot.bak"), "export const a = 1;\n");
+  });
+
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const fixed = {
+    success: true,
+    attempts: 2,
+    finalOutput: "",
+    appliedFix: {
+      rootCause: "r",
+      explanation: "e",
+      patches: [
+        { filePath: "src/index.ts", search: "1", replace: "2" },
+        { filePath: "src/index.ts", search: "x", replace: "y" }, // the same file edited twice is shown once
+      ],
+    },
+  };
+
+  it("shows what changed in each file, compared with its saved original", () => {
+    const lines = buildChangeDiffLines(dir, fixed);
+
+    expect(lines).toContain("--- a/src/index.ts");
+    expect(lines).toContain("-export const a = 1;");
+    expect(lines).toContain("+export const a = 2;");
+    expect(lines.filter((l) => l === "--- a/src/index.ts")).toHaveLength(1);
+    expect(lines.join("\n")).toMatch(/\.opspilot\.bak/); // says where the originals are kept
+  });
+
+  it("has nothing to show when the repair did not succeed or changed no file", () => {
+    expect(buildChangeDiffLines(dir, { ...fixed, success: false })).toEqual([]);
+    expect(buildChangeDiffLines(dir, { success: true, attempts: 0, finalOutput: "" })).toEqual([]);
+  });
+
+  it("shows nothing when the originals are not there", () => {
+    fs.rmSync(path.join(dir, "src", "index.ts.opspilot.bak"));
+
+    expect(buildChangeDiffLines(dir, fixed)).toEqual([]);
   });
 });

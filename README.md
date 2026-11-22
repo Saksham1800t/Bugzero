@@ -212,6 +212,8 @@ bugzero hunt --no-ai-report
 ### `bugzero rescue`
 Run the full AI-powered repair loop. Detects build failures, generates precise code patches, applies them, and verifies the result.
 
+When it fixes your project, `rescue` prints a diff of exactly what changed in each file, so you can review it at once. The original of every edited file is kept next to it as `<file>.opspilot.bak`.
+
 ```bash
 bugzero rescue --path /path/to/your/project
 ```

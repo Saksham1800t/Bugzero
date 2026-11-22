@@ -14,7 +14,7 @@ import {
   REPORT_FILENAME,
 } from "@opspilot/core";
 import { buildErrorJson, buildHuntJson, buildRescueJson } from "./json-output";
-import { buildRescueSummary } from "./summary";
+import { buildChangeDiffLines, buildRescueSummary } from "./summary";
 
 // The current folder's .env, so commands without --path find the API key. hunt and rescue load the
 // --path project's .env as well once they know which project that is.
@@ -166,6 +166,7 @@ program
       console.log("\n──────────────────────────────────────────────");
       const summary = buildRescueSummary(result, { dryRun });
       for (const line of summary.lines) console.log(line);
+      for (const line of buildChangeDiffLines(cwd, result)) console.log(line);
       console.log();
 
       finish(

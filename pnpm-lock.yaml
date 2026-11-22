@@ -64,6 +64,9 @@ importers:
       '@opspilot/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@opspilot/patcher':
+        specifier: workspace:*
+        version: link:../../packages/patcher
       '@opspilot/shared':
         specifier: workspace:*
         version: link:../../packages/shared

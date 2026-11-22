@@ -1,4 +1,5 @@
 import type { orchestrateAndFix } from "@opspilot/core";
+import { renderChangesFromBackups } from "@opspilot/patcher";
 import { uniqueFilePaths } from "@opspilot/shared";
 
 type RescueResult = Awaited<ReturnType<typeof orchestrateAndFix>>;
@@ -62,4 +63,15 @@ export function buildRescueSummary(result: RescueResult, options: { dryRun: bool
   if (result.error) lines.push(`   ${result.error}`);
   lines.push("", "👉 Full unresolved error logs have been listed in the generated report.");
   return { exitCode: 1, lines };
+}
+
+/**
+ * The lines showing what a successful repair changed: a unified diff of each edited file against the original
+ * saved next to it. Empty when nothing was repaired or the originals are not there.
+ */
+export function buildChangeDiffLines(cwd: string, result: RescueResult): string[] {
+  if (!result.success || !result.appliedFix) return [];
+  const diff = renderChangesFromBackups(cwd, uniqueFilePaths(result.appliedFix.patches));
+  if (diff === "") return [];
+  return ["", "Changes (the original of each file is kept next to it as <file>.opspilot.bak):", "", ...diff.split("\n")];
 }
