@@ -2,7 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { buildChangeDiffLines, buildRescueSummary } from "./summary";
+import { buildChangeDiffLines, buildRescueSummary, buildUndoHintLines, buildUndoSummary } from "./summary";
 
 const appliedFix = {
   rootCause: "Missing semicolon",
@@ -174,5 +174,78 @@ describe("buildChangeDiffLines", () => {
     fs.rmSync(path.join(dir, "src", "index.ts.opspilot.bak"));
 
     expect(buildChangeDiffLines(dir, fixed)).toEqual([]);
+  });
+});
+
+describe("buildUndoHintLines", () => {
+  const cwd = process.cwd();
+
+  it("tells you how to undo after a fix that worked", () => {
+    const lines = buildUndoHintLines(cwd, { success: true, attempts: 1, appliedFix }, { dryRun: false });
+
+    expect(lines.join("\n")).toContain("To put the files back as they were: bugzero undo");
+  });
+
+  it("warns about changed files after a run that changed files and still failed", () => {
+    const lines = buildUndoHintLines(cwd, { success: false, attempts: 3, appliedFix }, { dryRun: false });
+
+    expect(lines.join("\n")).toContain("BugZero changed files before giving up");
+    expect(lines.join("\n")).toContain("bugzero undo");
+  });
+
+  it("includes the project path when it is not the current folder", () => {
+    const lines = buildUndoHintLines(path.join(cwd, "other"), { success: true, attempts: 1, appliedFix }, { dryRun: false });
+
+    expect(lines.join("\n")).toContain(`bugzero undo --path "${path.join(cwd, "other")}"`);
+  });
+
+  it("says nothing when no file was changed, or on a dry run", () => {
+    expect(buildUndoHintLines(cwd, { success: false, attempts: 3 }, { dryRun: false })).toEqual([]);
+    expect(buildUndoHintLines(cwd, { success: true, attempts: 0 }, { dryRun: false })).toEqual([]);
+    expect(buildUndoHintLines(cwd, { success: true, attempts: 1, appliedFix }, { dryRun: true })).toEqual([]);
+  });
+});
+
+describe("buildUndoSummary", () => {
+  it("says so when there is nothing to undo", () => {
+    expect(buildUndoSummary([], { dryRun: false })).toEqual({
+      exitCode: 0,
+      lines: ["Nothing to undo — no BugZero backups (*.opspilot.bak) were found."],
+    });
+  });
+
+  it("lists restored files and exits 0", () => {
+    const summary = buildUndoSummary(
+      [
+        { filePath: "a.ts", status: "restored" },
+        { filePath: "b.ts", status: "restored" },
+      ],
+      { dryRun: false }
+    );
+
+    expect(summary.exitCode).toBe(0);
+    expect(summary.lines).toEqual(["↩️  Restored a.ts", "↩️  Restored b.ts", "", "Restored 2 file(s)."]);
+  });
+
+  it("explains each skipped file and exits 1", () => {
+    const summary = buildUndoSummary(
+      [
+        { filePath: "a.ts", status: "restored" },
+        { filePath: "b.ts", status: "edited-since", detail: "It was changed after BugZero fixed it." },
+      ],
+      { dryRun: false }
+    );
+
+    expect(summary.exitCode).toBe(1);
+    expect(summary.lines).toContain("⏭️  Skipped b.ts: It was changed after BugZero fixed it.");
+    expect(summary.lines).toContain("Restored 1 file(s).");
+    expect(summary.lines).toContain("1 file(s) were left as they are, with their backups kept.");
+  });
+
+  it("describes a dry run as changing nothing", () => {
+    const summary = buildUndoSummary([{ filePath: "a.ts", status: "would-restore" }], { dryRun: true });
+
+    expect(summary.exitCode).toBe(0);
+    expect(summary.lines).toEqual(["↩️  Would restore a.ts", "", "Dry run: 1 file(s) would be restored. Nothing was changed."]);
   });
 });

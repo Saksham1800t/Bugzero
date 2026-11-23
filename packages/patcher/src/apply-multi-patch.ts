@@ -1,6 +1,7 @@
 import type { ProtectedPathRules } from "@opspilot/shared";
 import fs from "fs";
 import { applyPatch } from "./apply-patch";
+import { saveFingerprint } from "./fingerprint";
 import { MatchStrategy } from "./fuzzy-match";
 import { resolvePatchTargets } from "./patch-targets";
 
@@ -127,6 +128,14 @@ export function applyPatches(
       backupPath: result.backupPath!,
       matchStrategy: result.matchStrategy!,
     });
+  }
+
+  // Remember what each file looks like now, so `undo` can tell if it is edited afterwards.
+  const noted = new Set<string>();
+  for (const item of applied) {
+    if (noted.has(item.absolutePath)) continue;
+    noted.add(item.absolutePath);
+    saveFingerprint(item.absolutePath, item.backupPath);
   }
 
   return { success: true, applied };

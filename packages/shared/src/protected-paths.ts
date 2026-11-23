@@ -26,6 +26,7 @@ export const DEFAULT_PROTECTED_PATTERNS: readonly string[] = [
   "bun.lockb",
   "node_modules/",
   "*.opspilot.bak",
+  "*.opspilot.bak.sha",
 ];
 
 /** The `protect` and `allow` settings of a project's `.bugzerorc`. */

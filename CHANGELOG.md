@@ -9,6 +9,18 @@ Entries for releases before 0.0.45 are not written up yet; see the
 
 ## [Unreleased]
 
+### Added
+
+- **`bugzero undo` puts back the files BugZero changed.** It restores each file from the `<file>.opspilot.bak`
+  saved next to it and removes the backups it used. A file you edited after the fix is left alone and
+  reported (use `--force` to restore it anyway), `--dry-run` shows what would happen, backups in
+  `node_modules` and `.git` are ignored, and protected files are never written. It exits 1 if any
+  file was not restored.
+- `rescue` now ends with how to undo, after a fix that worked and after a run that changed files and
+  still failed. Previously a failed run left changed files with no hint.
+- Each backup now has a small `<file>.opspilot.bak.sha` note next to it (a fingerprint of the fixed file),
+  which is how `undo` knows whether you edited the file since. It is protected like the backup itself.
+
 ## [0.0.57] - 2026-11-23
 
 ### Added

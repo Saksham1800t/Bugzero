@@ -110788,7 +110788,8 @@ var require_dist9 = __commonJS({
       "yarn.lock",
       "bun.lockb",
       "node_modules/",
-      "*.opspilot.bak"
+      "*.opspilot.bak",
+      "*.opspilot.bak.sha"
     ];
     function normalizePath(relPath) {
       return relPath.replace(/\\/g, "/").replace(/^(\.\/)+/, "").replace(/^\/+/, "").toLowerCase();
@@ -111603,13 +111604,16 @@ var require_dist12 = __commonJS({
     __export2(index_exports, {
       applyPatch: () => applyPatch,
       applyPatches: () => applyPatches,
+      findBackups: () => findBackups,
       findMatch: () => findMatch,
+      fingerprintOf: () => fingerprintOf,
       lineSimilarity: () => lineSimilarity,
       patchContent: () => patchContent,
       previewPatches: () => previewPatches,
       renderChangesFromBackups: () => renderChangesFromBackups,
       renderUnifiedDiff: () => renderUnifiedDiff,
-      resolvePatchTargets: () => resolvePatchTargets
+      resolvePatchTargets: () => resolvePatchTargets,
+      undoChanges: () => undoChanges
     });
     module2.exports = __toCommonJS2(index_exports);
     var import_fs2 = __toESM2(require("fs"));
@@ -111766,7 +111770,24 @@ var require_dist12 = __commonJS({
         return { success: false, error: err.message };
       }
     }
+    var import_fs3 = __toESM2(require("fs"));
+    var import_crypto = __toESM2(require("crypto"));
     var import_fs22 = __toESM2(require("fs"));
+    var FINGERPRINT_SUFFIX = ".sha";
+    function fingerprintOf(content) {
+      return import_crypto.default.createHash("sha256").update(content).digest("hex");
+    }
+    function saveFingerprint(absoluteFilePath, backupPath) {
+      const notePath = backupPath + FINGERPRINT_SUFFIX;
+      try {
+        import_fs22.default.writeFileSync(notePath, fingerprintOf(import_fs22.default.readFileSync(absoluteFilePath)) + "\n", "utf-8");
+      } catch {
+        try {
+          import_fs22.default.unlinkSync(notePath);
+        } catch {
+        }
+      }
+    }
     var import_shared2 = require_dist9();
     function resolvePatchTargets(cwd, patches, protection = (0, import_shared2.createProtectedPathRules)()) {
       const absolutePaths = [];
@@ -111791,13 +111812,13 @@ var require_dist12 = __commonJS({
     function rollback(originalContent, backupPaths) {
       for (const [absolutePath, content] of originalContent) {
         try {
-          import_fs22.default.writeFileSync(absolutePath, content, "utf-8");
+          import_fs3.default.writeFileSync(absolutePath, content, "utf-8");
         } catch {
         }
       }
       for (const backupPath of backupPaths) {
         try {
-          import_fs22.default.unlinkSync(backupPath);
+          import_fs3.default.unlinkSync(backupPath);
         } catch {
         }
       }
@@ -111819,7 +111840,7 @@ var require_dist12 = __commonJS({
         const absolutePath = absolutePaths[index];
         if (!originalContent.has(absolutePath)) {
           try {
-            originalContent.set(absolutePath, import_fs22.default.readFileSync(absolutePath, "utf-8"));
+            originalContent.set(absolutePath, import_fs3.default.readFileSync(absolutePath, "utf-8"));
           } catch {
             rollback(originalContent, backupPaths);
             return {
@@ -111850,10 +111871,16 @@ var require_dist12 = __commonJS({
           matchStrategy: result.matchStrategy
         });
       }
+      const noted = /* @__PURE__ */ new Set();
+      for (const item of applied) {
+        if (noted.has(item.absolutePath)) continue;
+        noted.add(item.absolutePath);
+        saveFingerprint(item.absolutePath, item.backupPath);
+      }
       return { success: true, applied };
     }
     var import_shared22 = require_dist9();
-    var import_fs3 = __toESM2(require("fs"));
+    var import_fs4 = __toESM2(require("fs"));
     var import_path22 = __toESM2(require("path"));
     var DEFAULT_CONTEXT = 3;
     var DEFAULT_MAX_LINE_LENGTH = 200;
@@ -112007,15 +112034,15 @@ var require_dist12 = __commonJS({
         try {
           changes.push({
             filePath: import_path22.default.relative(import_path22.default.resolve(cwd), resolved.absolutePath),
-            before: import_fs3.default.readFileSync(`${resolved.absolutePath}.opspilot.bak`, "utf-8"),
-            after: import_fs3.default.readFileSync(resolved.absolutePath, "utf-8")
+            before: import_fs4.default.readFileSync(`${resolved.absolutePath}.opspilot.bak`, "utf-8"),
+            after: import_fs4.default.readFileSync(resolved.absolutePath, "utf-8")
           });
         } catch {
         }
       }
       return renderUnifiedDiff(changes, options);
     }
-    var import_fs4 = __toESM2(require("fs"));
+    var import_fs5 = __toESM2(require("fs"));
     var import_path3 = __toESM2(require("path"));
     function previewPatches(cwd, patches, options = {}) {
       if (patches.length === 0) {
@@ -112029,7 +112056,7 @@ var require_dist12 = __commonJS({
         const absolutePath = targets.absolutePaths[index];
         if (!current.has(absolutePath)) {
           try {
-            const content = import_fs4.default.readFileSync(absolutePath, "utf-8");
+            const content = import_fs5.default.readFileSync(absolutePath, "utf-8");
             originals.set(absolutePath, content);
             current.set(absolutePath, content);
           } catch {
@@ -112049,6 +112076,95 @@ var require_dist12 = __commonJS({
         after: current.get(absolutePath)
       }));
       return { success: true, changes };
+    }
+    var import_shared3 = require_dist9();
+    var import_fs6 = __toESM2(require("fs"));
+    var import_path4 = __toESM2(require("path"));
+    var BACKUP_SUFFIX = ".opspilot.bak";
+    var SKIPPED_FOLDERS = /* @__PURE__ */ new Set(["node_modules", ".git"]);
+    function findBackups(cwd) {
+      const found = [];
+      const walk = (dir) => {
+        let entries;
+        try {
+          entries = import_fs6.default.readdirSync(dir, { withFileTypes: true });
+        } catch {
+          return;
+        }
+        for (const entry of entries) {
+          const full = import_path4.default.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            if (!SKIPPED_FOLDERS.has(entry.name)) walk(full);
+          } else if (entry.isFile() && entry.name.endsWith(BACKUP_SUFFIX)) {
+            found.push(full);
+          }
+        }
+      };
+      walk(import_path4.default.resolve(cwd));
+      return found.sort();
+    }
+    function readFingerprint(backupPath) {
+      try {
+        const text = import_fs6.default.readFileSync(backupPath + FINGERPRINT_SUFFIX, "utf-8").trim();
+        return text === "" ? void 0 : text;
+      } catch {
+        return void 0;
+      }
+    }
+    function remove(filePath) {
+      try {
+        import_fs6.default.unlinkSync(filePath);
+      } catch {
+      }
+    }
+    function undoChanges(cwd, options = {}) {
+      const root = import_path4.default.resolve(cwd);
+      const protection = options.protection ?? (0, import_shared3.createProtectedPathRules)();
+      const entries = [];
+      for (const backupPath of findBackups(root)) {
+        const target = backupPath.slice(0, -BACKUP_SUFFIX.length);
+        const filePath = import_path4.default.relative(root, target).split(import_path4.default.sep).join("/");
+        const entry = (status, detail) => ({ filePath, status, ...detail ? { detail } : {} });
+        if (!(0, import_shared3.isInsideDirectory)(root, target)) {
+          entries.push(entry("failed", "The file is outside the project."));
+          continue;
+        }
+        const blockedBy = (0, import_shared3.projectRelativePaths)(root, target).map((relPath) => protection.editBlockedBy(relPath)).find((pattern) => pattern !== void 0);
+        if (blockedBy !== void 0) {
+          entries.push(entry("protected", `It is protected (it matches "${blockedBy}"), so BugZero does not write to it.`));
+          continue;
+        }
+        try {
+          const original = import_fs6.default.readFileSync(backupPath);
+          const exists = import_fs6.default.existsSync(target);
+          if (exists && !import_fs6.default.statSync(target).isFile()) {
+            entries.push(entry("failed", "It is not a regular file."));
+            continue;
+          }
+          const current = exists ? import_fs6.default.readFileSync(target) : void 0;
+          const alreadyOriginal = current !== void 0 && current.equals(original);
+          if (current !== void 0 && !alreadyOriginal && !options.force) {
+            const fixed = readFingerprint(backupPath);
+            if (fixed !== void 0 && fingerprintOf(current) !== fixed) {
+              entries.push(
+                entry("edited-since", "It was changed after BugZero fixed it. Use --force to restore it anyway (your changes would be lost).")
+              );
+              continue;
+            }
+          }
+          if (options.dryRun) {
+            entries.push(entry("would-restore"));
+            continue;
+          }
+          if (!alreadyOriginal) import_fs6.default.writeFileSync(target, original);
+          remove(backupPath);
+          remove(backupPath + FINGERPRINT_SUFFIX);
+          entries.push(entry("restored"));
+        } catch (error) {
+          entries.push(entry("failed", error?.message ?? String(error)));
+        }
+      }
+      return entries;
     }
   }
 });

@@ -1,5 +1,6 @@
 import type { orchestrateAndFix } from "@opspilot/core";
-import { renderChangesFromBackups } from "@opspilot/patcher";
+import { renderChangesFromBackups, type UndoEntry } from "@opspilot/patcher";
+import path from "path";
 import { uniqueFilePaths } from "@opspilot/shared";
 
 type RescueResult = Awaited<ReturnType<typeof orchestrateAndFix>>;
@@ -74,4 +75,47 @@ export function buildChangeDiffLines(cwd: string, result: RescueResult): string[
   const diff = renderChangesFromBackups(cwd, uniqueFilePaths(result.appliedFix.patches));
   if (diff === "") return [];
   return ["", "Changes (the original of each file is kept next to it as <file>.opspilot.bak):", "", ...diff.split("\n")];
+}
+
+/**
+ * The closing hint telling a person how to put things back, shown after a run that changed files (a fix
+ * that worked, or one that changed files and still failed). Empty when nothing was changed.
+ */
+export function buildUndoHintLines(cwd: string, result: RescueResult, options: { dryRun: boolean }): string[] {
+  if (options.dryRun || !result.appliedFix) return [];
+  const command = path.resolve(cwd) === path.resolve(process.cwd()) ? "bugzero undo" : `bugzero undo --path "${path.resolve(cwd)}"`;
+  const lead = result.success
+    ? "To put the files back as they were:"
+    : "BugZero changed files before giving up. To put them back as they were:";
+  return ["", `${lead} ${command}`];
+}
+
+export interface UndoSummary {
+  lines: string[];
+  exitCode: 0 | 1;
+}
+
+/** Builds what `bugzero undo` prints. Exit code 1 means some file was not restored. */
+export function buildUndoSummary(entries: UndoEntry[], options: { dryRun: boolean }): UndoSummary {
+  if (entries.length === 0) {
+    return { exitCode: 0, lines: ["Nothing to undo — no BugZero backups (*.opspilot.bak) were found."] };
+  }
+
+  const lines: string[] = [];
+  for (const entry of entries) {
+    if (entry.status === "restored") lines.push(`↩️  Restored ${entry.filePath}`);
+    else if (entry.status === "would-restore") lines.push(`↩️  Would restore ${entry.filePath}`);
+    else lines.push(`⏭️  Skipped ${entry.filePath}: ${entry.detail ?? entry.status}`);
+  }
+
+  const done = entries.filter((entry) => entry.status === "restored" || entry.status === "would-restore").length;
+  const left = entries.length - done;
+  lines.push("");
+  lines.push(
+    options.dryRun
+      ? `Dry run: ${done} file(s) would be restored. Nothing was changed.`
+      : `Restored ${done} file(s).`
+  );
+  if (left > 0) lines.push(`${left} file(s) were left as they are, with their backups kept.`);
+  return { exitCode: left > 0 ? 1 : 0, lines };
 }

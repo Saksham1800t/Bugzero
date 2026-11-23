@@ -21,6 +21,7 @@ vi.mock("@opspilot/ai-provider", () => ({
   },
 }));
 
+import { undoChanges } from "@opspilot/patcher";
 import { previewAnalysisPrompt, runRepairWorkflow } from "./workflow";
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -103,6 +104,24 @@ describe("repair workflow end to end (fake model, real patcher and pipeline)", (
     // Restoring the backup must bring back what the user had, not the result of attempt 1.
     expect(fs.readFileSync(path.join(projectDir, "a.txt.opspilot.bak"), "utf8")).toBe("state: broken\n");
     expect(fs.readFileSync(path.join(projectDir, "b.txt.opspilot.bak"), "utf8")).toBe("state: broken\n");
+  });
+
+  it("undo puts the whole project back as it was after a repair that took two attempts", async () => {
+    const tweakA = { filePath: "a.txt", search: "FIXED", replace: "FIXED-AGAIN" };
+    const fixB = { filePath: "b.txt", search: "broken", replace: "FIXED" };
+    scriptedReplies.push(
+      reply("a.txt", "a.txt was broken"),
+      JSON.stringify({ rootCause: "b.txt too", explanation: "Second pass", patches: [tweakA, fixB] })
+    );
+    await runRepairWorkflow({ cwd: projectDir, logs: "error: a.txt is still broken", maxAttempts: 3 });
+    expect(fs.readFileSync(path.join(projectDir, "a.txt"), "utf8")).toBe("state: FIXED-AGAIN\n");
+
+    const entries = undoChanges(projectDir);
+
+    expect(entries.map((entry) => entry.status)).toEqual(["restored", "restored"]);
+    expect(fs.readFileSync(path.join(projectDir, "a.txt"), "utf8")).toBe("state: broken\n");
+    expect(fs.readFileSync(path.join(projectDir, "b.txt"), "utf8")).toBe("state: broken\n");
+    expect(fs.readdirSync(projectDir).filter((name) => name.includes(".opspilot.bak"))).toEqual([]);
   });
 
   it("refuses a patch aimed outside the project, then still finishes the repair", async () => {

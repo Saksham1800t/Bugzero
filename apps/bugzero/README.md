@@ -212,7 +212,7 @@ bugzero hunt --no-ai-report
 ### `bugzero rescue`
 Run the full AI-powered repair loop. Detects build failures, generates precise code patches, applies them, and verifies the result.
 
-When it fixes your project, `rescue` prints a diff of exactly what changed in each file, so you can review it at once. The original of every edited file is kept next to it as `<file>.opspilot.bak`.
+When it fixes your project, `rescue` prints a diff of exactly what changed in each file, so you can review it at once. The original of every edited file is kept next to it as `<file>.opspilot.bak`, and `bugzero undo` puts everything back.
 
 ```bash
 bugzero rescue --path /path/to/your/project
@@ -240,6 +240,21 @@ The whole proposed fix is shown at once, because a fix that spans several files 
 | `--json` | | `false` | Print the result as one JSON document on stdout (logs go to stderr) |
 
 </details>
+
+### `bugzero undo`
+Puts back every file BugZero changed, from the backups saved next to them, and removes those backups.
+
+```bash
+bugzero undo --path /path/to/your/project
+```
+
+`rescue` tells you to run it after it changes files, including when it changes files and still fails. A file you edited after BugZero fixed it is left alone and reported, with its backup kept, so your own work is not lost; add `--force` to restore it anyway. Use `--dry-run` to see what would be restored without changing anything. Backups inside `node_modules` and `.git` are ignored. `undo` exits with 1 if any file was left as it was.
+
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--path <dir>` | `-p` | `.` | Path to the target project |
+| `--dry-run` | | `false` | Show what would be restored without changing anything |
+| `--force` | | `false` | Also restore files edited after BugZero fixed them (those edits are lost) |
 
 ### `bugzero vibe`
 Interactively select which AI model to use. Fetches the current model list from OpenRouter, lets you pick one, and saves the selection to a local `.bugzerorc` config file.

@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
-import { loadProjectEnv } from "@opspilot/config";
+import { getProtectionSettings, loadProjectEnv } from "@opspilot/config";
+import { undoChanges } from "@opspilot/patcher";
+import { createProtectedPathRules } from "@opspilot/shared";
 import { Command } from "commander";
 import fs from "fs";
 import path from "path";
@@ -15,7 +17,7 @@ import {
 } from "@opspilot/core";
 import { buildErrorJson, buildHuntJson, buildRescueJson } from "./json-output";
 import { createApprovalHandler } from "./approval";
-import { buildChangeDiffLines, buildRescueSummary } from "./summary";
+import { buildChangeDiffLines, buildRescueSummary, buildUndoHintLines, buildUndoSummary } from "./summary";
 
 // The current folder's .env, so commands without --path find the API key. hunt and rescue load the
 // --path project's .env as well once they know which project that is.
@@ -181,6 +183,7 @@ program
       const summary = buildRescueSummary(result, { dryRun });
       for (const line of summary.lines) console.log(line);
       for (const line of buildChangeDiffLines(cwd, result)) console.log(line);
+      for (const line of buildUndoHintLines(cwd, result, { dryRun })) console.log(line);
       console.log();
 
       finish(
@@ -198,6 +201,33 @@ program
     } catch (error: any) {
       console.error(`\n❌ [BugZero] Execution failed: ${error.message || error}`);
       finish(1, json ? buildErrorJson(String(error.message || error)) : undefined);
+    }
+  });
+
+// ── bugzero undo ─────────────────────────────────────────────────────────────
+program
+  .command("undo")
+  .description("Put back the files BugZero changed, from the backups saved next to them")
+  .option("-p, --path <dir>", "Path to the target project", ".")
+  .option("--dry-run", "Show what would be restored without changing anything", false)
+  .option("--force", "Also restore files that were edited after BugZero fixed them (those edits are lost)", false)
+  .action((opts) => {
+    try {
+      const cwd = path.resolve(opts.path);
+      const entries = undoChanges(cwd, {
+        dryRun: opts.dryRun === true,
+        force: opts.force === true,
+        protection: createProtectedPathRules(getProtectionSettings(cwd)),
+      });
+      const summary = buildUndoSummary(entries, { dryRun: opts.dryRun === true });
+      console.log();
+      for (const line of summary.lines) console.log(line);
+      console.log();
+      finish(summary.exitCode);
+    } catch (error: any) {
+      console.error(`
+❌ [BugZero] Execution failed: ${error.message || error}`);
+      finish(1);
     }
   });
 
@@ -298,4 +328,4 @@ program
     });
   });
 
-program.parse();
+program.parse();
