@@ -9,6 +9,8 @@ Entries for releases before 0.0.45 are not written up yet; see the
 
 ## [Unreleased]
 
+## [0.0.58] - 2026-11-23
+
 ### Added
 
 - **`bugzero undo` puts back the files BugZero changed.** It restores each file from the `<file>.opspilot.bak`
