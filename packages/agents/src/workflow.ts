@@ -5,6 +5,7 @@ import { buildAnalysisPrompt } from "@opspilot/prompts";
 import { getProtectionSettings } from "@opspilot/config";
 import { applyPatches, previewPatches, renderUnifiedDiff } from "@opspilot/patcher";
 import { runValidationPipeline } from "@opspilot/analyzers";
+import { describeSnapshot, recordAttempt, snapshotOf, startTracking, type PipelineStep } from "./progress";
 import { createProtectedPathRules, type AIFixSuggestion, type ApprovalHandler } from "@opspilot/shared";
 
 const provider = new OpenRouterProvider();
@@ -150,15 +151,24 @@ async function verifyNode(state: typeof GraphState.State) {
     console.log(`[BugZero] ❌ Validation failed at step "${result.step}". New error output captured.`);
   }
 
-  return {
-    success: result.success,
-    logs: result.success ? "" : result.output,
-  };
+  if (result.success) return { success: true, logs: "" };
+
+  // Did this attempt get anywhere? Compare with the best result so far, and stop early after `patience`
+  // attempts in a row that did not (but never before the last attempt, which ends the run anyway).
+  const progress = recordAttempt(state.progress, snapshotOf(result.step, result.output));
+  const stuck = state.patience > 0 && progress.stagnantAttempts >= state.patience && state.attempts < state.maxAttempts;
+  if (stuck) {
+    console.log(
+      `[BugZero] No progress in ${progress.stagnantAttempts} attempt(s) in a row (best so far: ${describeSnapshot(progress.best)}; now: ${describeSnapshot(progress.last)}) — stopping early instead of using the remaining attempt(s).`
+    );
+  }
+  return { success: false, logs: result.output, progress, stoppedForNoProgress: stuck };
 }
 
 // ── Router: loop or exit ───────────────────────────────────────────────────
 function shouldRetry(state: typeof GraphState.State) {
   if (state.success) return END;
+  if (state.stoppedForNoProgress) return END;
   if (state.attempts >= state.maxAttempts) {
     console.log(
       `[BugZero] Max attempts (${state.maxAttempts}) reached — giving up.`
@@ -188,6 +198,13 @@ export interface RepairInput {
   timeoutMs?: number;
   /** When given, each proposed fix is shown to it first and is only written if it approves */
   approve?: ApprovalHandler;
+  /**
+   * Stop early after this many attempts in a row that make no progress: not fewer errors, and not a later step
+   * (build, then lint, then tests) failing. 0 or not given means never stop early.
+   */
+  patience?: number;
+  /** Which step the starting failure came from; lets the very first attempt be compared with it */
+  initialStep?: PipelineStep;
 }
 
 /**
@@ -196,8 +213,14 @@ export interface RepairInput {
  * abort any run asking for more than ~8 attempts; scale it to the request.
  */
 export function runRepairWorkflow(input: RepairInput) {
+  const { initialStep, ...rest } = input;
   return workflow.invoke(
-    { ...input, attempts: 0, success: false },
+    {
+      ...rest,
+      attempts: 0,
+      success: false,
+      progress: initialStep ? startTracking(snapshotOf(initialStep, input.logs)) : null,
+    },
     { recursionLimit: input.maxAttempts * 3 + 5 }
   );
 }

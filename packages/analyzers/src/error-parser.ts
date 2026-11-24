@@ -10,7 +10,10 @@ const ESLINT_ERROR_RE = /^\s+(\d+):(\d+)\s+error\s+(.+)$/gm;
 const JEST_FAIL_RE = /● (.+)/g;
 const JEST_FILE_RE = /FAIL\s+([\w/\\.\-]+)/g;
 
-export function parseErrors(output: string): ParsedError[] {
+export function parseErrors(rawOutput: string): ParsedError[] {
+  // Windows tools end lines with CRLF, and "." in the patterns above does not match a carriage return,
+  // so without this no line would match.
+  const output = rawOutput.replace(/\r\n/g, "\n");
   const errors: ParsedError[] = [];
 
   // --- TypeScript ---

@@ -124,6 +124,149 @@ describe("repair workflow end to end (fake model, real patcher and pipeline)", (
     expect(fs.readdirSync(projectDir).filter((name) => name.includes(".opspilot.bak"))).toEqual([]);
   });
 
+  describe("stopping early when attempts make no progress", () => {
+    // The project fails with as many TypeScript-style errors as the number after "level:" in state.txt.
+    // Each scripted reply changes that number, so the test controls exactly how the error count moves.
+    const levelReply = (from: number, to: number) =>
+      JSON.stringify({
+        rootCause: "level is wrong",
+        explanation: "changed the level",
+        patches: [{ filePath: "state.txt", search: "level: " + from, replace: "level: " + to }],
+      });
+
+    const errorLines = (count: number) =>
+      Array.from({ length: count }, (_, i) => "src/a.ts(" + (i + 1) + ",1): error TS2304: Cannot find name 'x'.").join("\n");
+
+    beforeEach(() => {
+      fs.writeFileSync(path.join(projectDir, "state.txt"), "level: 3\n");
+      fs.writeFileSync(
+        path.join(projectDir, "check.js"),
+        'const n = Number(/level: ([0-9]+)/.exec(require("fs").readFileSync("state.txt", "utf8"))[1]);\n' +
+          'for (let i = 1; i <= n; i++) console.error("src/a.ts(" + i + ",1): error TS2304: Cannot find name x.");\n' +
+          "process.exit(n > 0 ? 1 : 0);\n"
+      );
+    });
+
+    const run = (extra: { patience?: number; maxAttempts?: number }) =>
+      runRepairWorkflow({
+        cwd: projectDir,
+        logs: errorLines(3),
+        initialStep: "build",
+        maxAttempts: extra.maxAttempts ?? 6,
+        patience: extra.patience,
+      });
+
+    it("stops after 2 attempts in a row with the same number of errors, and says why", async () => {
+      // 3 errors stay 3 errors: level 3 -> 3 would be a no-op, so shuffle with another file the build ignores.
+      scriptedReplies.push(
+        JSON.stringify({ rootCause: "a", explanation: "a", patches: [{ filePath: "a.txt", search: "broken", replace: "tweak1" }] }),
+        JSON.stringify({ rootCause: "b", explanation: "b", patches: [{ filePath: "b.txt", search: "broken", replace: "tweak2" }] }),
+        levelReply(3, 0)
+      );
+
+      const state = await run({ patience: 2 });
+
+      expect(state.success).toBe(false);
+      expect(state.attempts).toBe(2);
+      expect(state.stoppedForNoProgress).toBe(true);
+      expect(receivedPrompts).toHaveLength(2); // the third scripted reply was never asked for
+    });
+
+    it("stops when the error count grows", async () => {
+      scriptedReplies.push(levelReply(3, 5), levelReply(5, 6), levelReply(6, 0));
+
+      const state = await run({ patience: 2 });
+
+      expect(state.stoppedForNoProgress).toBe(true);
+      expect(state.attempts).toBe(2);
+    });
+
+    it("keeps going while the error count keeps shrinking, however many attempts that takes", async () => {
+      scriptedReplies.push(levelReply(3, 2), levelReply(2, 1), levelReply(1, 0));
+
+      const state = await run({ patience: 1 });
+
+      expect(state.success).toBe(true);
+      expect(state.attempts).toBe(3);
+      expect(state.stoppedForNoProgress).toBe(false);
+    });
+
+    it("never stops early with patience 0, and uses every attempt", async () => {
+      scriptedReplies.push(levelReply(3, 4), levelReply(4, 5), levelReply(5, 6), levelReply(6, 7));
+
+      const state = await run({ patience: 0, maxAttempts: 4 });
+
+      expect(state.success).toBe(false);
+      expect(state.attempts).toBe(4);
+      expect(state.stoppedForNoProgress).toBe(false);
+    });
+
+    it("does not stop early when no patience is given", async () => {
+      scriptedReplies.push(levelReply(3, 4), levelReply(4, 5), levelReply(5, 6));
+
+      const state = await run({ maxAttempts: 3 });
+
+      expect(state.attempts).toBe(3);
+      expect(state.stoppedForNoProgress).toBe(false);
+    });
+
+    it("lets the last attempt end the run normally rather than calling it an early stop", async () => {
+      scriptedReplies.push(levelReply(3, 4), levelReply(4, 5));
+
+      const state = await run({ patience: 2, maxAttempts: 2 });
+
+      expect(state.attempts).toBe(2);
+      expect(state.stoppedForNoProgress).toBe(false);
+    });
+
+    it("counts a run that fixes the build and then fails at lint as progress, even with more errors", async () => {
+      fs.writeFileSync(
+        path.join(projectDir, "package.json"),
+        JSON.stringify({ name: "demo", scripts: { build: "node check.js", lint: "node lint.js" } })
+      );
+      fs.writeFileSync(
+        path.join(projectDir, "lint.js"),
+        'const n = Number(/lint: ([0-9]+)/.exec(require("fs").readFileSync("state.txt", "utf8"))[1]);\n' +
+          'if (n > 0) { console.error("/p/src/a.ts"); for (let i = 1; i <= n; i++) console.error("  " + i + ":1  error  x is not defined  no-undef"); }\n' +
+          "process.exit(n > 0 ? 1 : 0);\n"
+      );
+      fs.writeFileSync(path.join(projectDir, "state.txt"), "level: 1\nlint: 8\n");
+      scriptedReplies.push(
+        levelReply(1, 0), // the build passes, then lint fails with 8 errors: more than before, but a later step
+        JSON.stringify({
+          rootCause: "lint",
+          explanation: "fixed lint",
+          patches: [{ filePath: "state.txt", search: "lint: 8", replace: "lint: 0" }],
+        })
+      );
+
+      const state = await runRepairWorkflow({
+        cwd: projectDir,
+        logs: errorLines(1),
+        initialStep: "build",
+        maxAttempts: 4,
+        patience: 1,
+      });
+
+      expect(state.success).toBe(true);
+      expect(state.attempts).toBe(2);
+    });
+
+    it("does not count attempts whose patch could not be applied", async () => {
+      const wrong = JSON.stringify({
+        rootCause: "guess",
+        explanation: "guess",
+        patches: [{ filePath: "state.txt", search: "text that is not there", replace: "x" }],
+      });
+      scriptedReplies.push(wrong, wrong, levelReply(3, 0));
+
+      const state = await run({ patience: 2, maxAttempts: 4 });
+
+      expect(state.success).toBe(true);
+      expect(state.attempts).toBe(3);
+    });
+  });
+
   it("refuses a patch aimed outside the project, then still finishes the repair", async () => {
     const outsideFile = path.join(path.dirname(projectDir), `bugzero-outside-${path.basename(projectDir)}.txt`);
     fs.writeFileSync(outsideFile, "state: broken\n");

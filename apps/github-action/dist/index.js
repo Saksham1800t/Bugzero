@@ -26379,7 +26379,8 @@ var require_dist = __commonJS({
     var ESLINT_ERROR_RE = /^\s+(\d+):(\d+)\s+error\s+(.+)$/gm;
     var JEST_FAIL_RE = /● (.+)/g;
     var JEST_FILE_RE = /FAIL\s+([\w/\\.\-]+)/g;
-    function parseErrors(output) {
+    function parseErrors(rawOutput) {
+      const output = rawOutput.replace(/\r\n/g, "\n");
       const errors = [];
       const tsMatches = [...output.matchAll(TS_ERROR_RE)];
       for (const m of tsMatches) {
@@ -112292,6 +112293,21 @@ var require_dist13 = __commonJS({
         reducer: (total, added) => total + added,
         default: () => 0
       }),
+      /** How many attempts in a row may make no progress before the run stops early (0 = never stop early) */
+      patience: (0, import_langgraph.Annotation)({
+        reducer: (_, value) => value,
+        default: () => 0
+      }),
+      /** The best result so far and how many attempts in a row did not beat it (null until there is one to compare to) */
+      progress: (0, import_langgraph.Annotation)({
+        reducer: (_, value) => value,
+        default: () => null
+      }),
+      /** True when the run stopped before max attempts because attempts were not making progress */
+      stoppedForNoProgress: (0, import_langgraph.Annotation)({
+        reducer: (_, value) => value,
+        default: () => false
+      }),
       /** Per-command timeout in milliseconds for validation steps (undefined = no limit) */
       timeoutMs: (0, import_langgraph.Annotation)({
         reducer: (_, value) => value,
@@ -112302,7 +112318,42 @@ var require_dist13 = __commonJS({
     var import_prompts = require_dist10();
     var import_config = require_dist11();
     var import_patcher = require_dist12();
+    var import_analyzers2 = require_dist();
     var import_analyzers = require_dist();
+    var STEP_ORDER = { build: 0, lint: 1, test: 2, none: 3 };
+    var ANSI_RE = /\u001b\[[0-9;]*[A-Za-z]/g;
+    function snapshotOf(step, output) {
+      const errors = (0, import_analyzers.parseErrors)(output);
+      const countable = errors.length > 0 && errors[0].type !== "unknown";
+      return {
+        step,
+        errorCount: countable ? errors.length : null,
+        fingerprint: output.replace(ANSI_RE, "").replace(/\r\n/g, "\n").trim()
+      };
+    }
+    function isProgress(best, last, current) {
+      const stepDifference = STEP_ORDER[current.step] - STEP_ORDER[best.step];
+      if (stepDifference !== 0) return stepDifference > 0;
+      if (best.errorCount !== null && current.errorCount !== null) {
+        return current.errorCount < best.errorCount;
+      }
+      return current.fingerprint !== best.fingerprint && current.fingerprint !== last.fingerprint;
+    }
+    function startTracking(initial) {
+      return { best: initial, last: initial, stagnantAttempts: 0 };
+    }
+    function recordAttempt(tracker, current) {
+      if (tracker === null) return startTracking(current);
+      if (isProgress(tracker.best, tracker.last, current)) {
+        return { best: current, last: current, stagnantAttempts: 0 };
+      }
+      return { best: tracker.best, last: current, stagnantAttempts: tracker.stagnantAttempts + 1 };
+    }
+    function describeSnapshot(snapshot) {
+      const where = snapshot.step === "none" ? "" : ` in ${snapshot.step}`;
+      if (snapshot.errorCount === null) return `output it cannot count${where}`;
+      return `${snapshot.errorCount} error${snapshot.errorCount === 1 ? "" : "s"}${where}`;
+    }
     var import_shared2 = require_dist9();
     var provider = new import_ai_provider.OpenRouterProvider();
     function protectionFor(cwd) {
@@ -112415,19 +112466,25 @@ Any other files from that same suggestion were rolled back to keep the change at
         };
       }
       console.log("[BugZero] Re-running validation pipeline to verify fix\u2026");
-      const result = await (0, import_analyzers.runValidationPipeline)(state.cwd, { timeoutMs: state.timeoutMs });
+      const result = await (0, import_analyzers2.runValidationPipeline)(state.cwd, { timeoutMs: state.timeoutMs });
       if (result.success) {
         console.log("[BugZero] \u2705 Validation succeeded!");
       } else {
         console.log(`[BugZero] \u274C Validation failed at step "${result.step}". New error output captured.`);
       }
-      return {
-        success: result.success,
-        logs: result.success ? "" : result.output
-      };
+      if (result.success) return { success: true, logs: "" };
+      const progress = recordAttempt(state.progress, snapshotOf(result.step, result.output));
+      const stuck = state.patience > 0 && progress.stagnantAttempts >= state.patience && state.attempts < state.maxAttempts;
+      if (stuck) {
+        console.log(
+          `[BugZero] No progress in ${progress.stagnantAttempts} attempt(s) in a row (best so far: ${describeSnapshot(progress.best)}; now: ${describeSnapshot(progress.last)}) \u2014 stopping early instead of using the remaining attempt(s).`
+        );
+      }
+      return { success: false, logs: result.output, progress, stoppedForNoProgress: stuck };
     }
     function shouldRetry(state) {
       if (state.success) return import_langgraph2.END;
+      if (state.stoppedForNoProgress) return import_langgraph2.END;
       if (state.attempts >= state.maxAttempts) {
         console.log(
           `[BugZero] Max attempts (${state.maxAttempts}) reached \u2014 giving up.`
@@ -112438,8 +112495,14 @@ Any other files from that same suggestion were rolled back to keep the change at
     }
     var workflow = new import_langgraph2.StateGraph(GraphState).addNode("analyze", analyzeNode).addNode("apply_fix", applyFixNode).addNode("verify", verifyNode).addEdge(import_langgraph2.START, "analyze").addEdge("analyze", "apply_fix").addEdge("apply_fix", "verify").addConditionalEdges("verify", shouldRetry).compile();
     function runRepairWorkflow(input) {
+      const { initialStep, ...rest } = input;
       return workflow.invoke(
-        { ...input, attempts: 0, success: false },
+        {
+          ...rest,
+          attempts: 0,
+          success: false,
+          progress: initialStep ? startTracking(snapshotOf(initialStep, input.logs)) : null
+        },
         { recursionLimit: input.maxAttempts * 3 + 5 }
       );
     }
@@ -112480,12 +112543,14 @@ var require_dist14 = __commonJS({
     var index_exports = {};
     __export2(index_exports, {
       DEFAULT_MAX_ATTEMPTS: () => DEFAULT_MAX_ATTEMPTS,
+      DEFAULT_PATIENCE: () => DEFAULT_PATIENCE,
       REPORT_FILENAME: () => REPORT_FILENAME,
       detectFramework: () => detectFramework,
       detectPackageManager: () => import_analyzers2.detectPackageManager,
       orchestrate: () => orchestrate,
       orchestrateAndFix: () => orchestrateAndFix2,
       resolveMaxAttempts: () => resolveMaxAttempts,
+      resolvePatience: () => resolvePatience,
       resolveTimeoutMs: () => resolveTimeoutMs
     });
     module2.exports = __toCommonJS2(index_exports);
@@ -112633,6 +112698,7 @@ ${params.rawOutput}
 Re-run without \`--dry-run\` to let BugZero attempt a fix.
 `;
     }
+    var import_config = require_dist11();
     var DEFAULT_MAX_ATTEMPTS = 3;
     function resolveTimeoutMs(seconds) {
       if (seconds === void 0) return void 0;
@@ -112648,6 +112714,16 @@ Re-run without \`--dry-run\` to let BugZero attempt a fix.
       }
       return attempts;
     }
+    var DEFAULT_PATIENCE = 2;
+    function resolvePatience(flag, configured) {
+      const source = flag !== void 0 ? "--patience" : "patience in .bugzerorc";
+      const value = flag !== void 0 ? flag : configured;
+      if (value === void 0) return DEFAULT_PATIENCE;
+      if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+        throw new Error(`${source} must be a whole number of 0 or more, where 0 turns it off (received ${JSON.stringify(value) ?? String(value)}).`);
+      }
+      return value;
+    }
     var import_fs22 = __toESM2(require("fs"));
     var import_path22 = __toESM2(require("path"));
     function assertNodeProject(cwd) {
@@ -112657,12 +112733,12 @@ Re-run without \`--dry-run\` to let BugZero attempt a fix.
     }
     var import_ai_provider = require_dist8();
     var REPORT_FILENAME = "bugzero-report.md";
-    function failureMessage(maxAttempts, declined, appliedAnything) {
+    function failureMessage(maxAttempts, declined, appliedAnything, stoppedAfter) {
       const plural = declined === 1 ? "fix" : "fixes";
       if (declined > 0 && !appliedAnything) {
         return `You declined ${declined} proposed ${plural}, so nothing was changed.`;
       }
-      const base = `Max attempts (${maxAttempts}) reached without a successful build.`;
+      const base = stoppedAfter !== void 0 ? `Stopped early: ${stoppedAfter} attempt${stoppedAfter === 1 ? "" : "s"} in a row made no progress (the errors did not get fewer and no later step was reached), so the remaining attempts were not used. Try a different model with 'bugzero vibe', or use --patience 0 to keep going regardless.` : `Max attempts (${maxAttempts}) reached without a successful build.`;
       return declined > 0 ? `${base} You declined ${declined} proposed ${plural}.` : base;
     }
     function statusLabel(result) {
@@ -112692,6 +112768,7 @@ Re-run without \`--dry-run\` to let BugZero attempt a fix.
       assertNodeProject(cwd);
       const maxAttempts = resolveMaxAttempts(options.maxAttempts);
       const timeoutMs = resolveTimeoutMs(options.timeoutSeconds);
+      const patience = resolvePatience(options.patience, (0, import_config.getLocalConfig)(cwd).patience);
       console.log(`[BugZero] Running validation pipeline in: ${cwd}`);
       const pipelineResult = await (0, import_analyzers.runValidationPipeline)(cwd, { timeoutMs });
       if (pipelineResult.success) {
@@ -112742,14 +112819,22 @@ Re-run without \`--dry-run\` to let BugZero attempt a fix.
         logs: pipelineResult.output,
         maxAttempts,
         timeoutMs,
-        approve: options.approve
+        approve: options.approve,
+        patience,
+        initialStep: pipelineResult.step
       });
       const result = {
         success: finalState.success,
         attempts: finalState.attempts,
         finalOutput: finalState.logs || pipelineResult.output,
         appliedFix: finalState.appliedFix ?? void 0,
-        error: finalState.success ? void 0 : failureMessage(maxAttempts, finalState.declinedFixes ?? 0, Boolean(finalState.appliedFix)),
+        error: finalState.success ? void 0 : failureMessage(
+          maxAttempts,
+          finalState.declinedFixes ?? 0,
+          Boolean(finalState.appliedFix),
+          finalState.stoppedForNoProgress ? patience : void 0
+        ),
+        stoppedEarly: finalState.stoppedForNoProgress ? "no-progress" : void 0,
         declinedFixes: finalState.declinedFixes ? finalState.declinedFixes : void 0,
         modelUsed: finalState.modelUsed,
         promptTokens: finalState.promptTokens,

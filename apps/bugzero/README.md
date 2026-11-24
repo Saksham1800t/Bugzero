@@ -226,6 +226,8 @@ Apply this change? [y] yes  [n] no  [m] no, and leave a note for the AI  (Enter 
 
 The whole proposed fix is shown at once, because a fix that spans several files is applied together or not at all. Answer `y` to apply it. Answer `n` (or just press Enter) to decline: nothing is changed, and the AI is told you declined and asked for a different fix, which uses up one attempt. Answer `m` to decline and type a short note that is sent to the AI, such as "leave the config file alone". `--approve` needs an interactive terminal; without one (in CI, or with piped input) it stops immediately, before running anything. It has no effect with `--dry-run` or `--print-prompt`, which never write.
 
+**Stuck runs stop early.** After each attempt BugZero compares what is still failing with the best result so far. It counts as progress when there are fewer errors, or when a later step is now the one failing (the build passes and lint fails, or lint passes and the tests fail), even if that step shows more errors. If 2 attempts in a row make no progress, it stops and says why, instead of paying for the remaining attempts. Output BugZero cannot count only stops a run when it is exactly the same as before. Attempts whose patch could not be applied, or that you declined, do not count. Change the limit with `--patience <n>` or `patience` in `.bugzerorc`; `0` turns it off.
+
 <details>
 <summary><strong>Options for <code>rescue</code></strong></summary>
 
@@ -234,6 +236,7 @@ The whole proposed fix is shown at once, because a fix that spans several files 
 | `--path <dir>` | `-p` | `.` | Path to the target project |
 | `--max-attempts <n>` | `-n` | `3` | Maximum AI fix iterations before giving up |
 | `--timeout <seconds>` | `-t` | none | Stop any build, lint, or test command that runs longer than this many seconds |
+| `--patience <n>` | | `2` | Stop early after this many attempts in a row make no progress. `0` turns it off |
 | `--dry-run` | | `false` | Analyze only — no files will be written |
 | `--approve` | | `false` | Show each proposed fix as a diff and ask before writing it. Needs an interactive terminal |
 | `--print-prompt` | | `false` | Print the exact prompt that would be sent to the AI model, then stop. Nothing is sent and no files are written |
@@ -311,7 +314,8 @@ BugZero reads a `.bugzerorc` JSON file in your target project directory to pick 
 {
   "model": "deepseek/deepseek-chat",
   "protect": ["config/prod.json", "migrations/**"],
-  "allow": [".env.example"]
+  "allow": [".env.example"],
+  "patience": 2
 }
 ```
 
@@ -320,6 +324,7 @@ BugZero reads a `.bugzerorc` JSON file in your target project directory to pick 
 | `model` | The OpenRouter model to use. Set it with `bugzero vibe`. |
 | `protect` | Extra files BugZero must never edit, added to the built-in list (see Protected files above). |
 | `allow` | Files from the built-in list that BugZero may edit and read after all, such as `.env.example`. A `protect` pattern still wins. |
+| `patience` | How many attempts in a row may make no progress before `rescue` stops early. Default 2, `0` turns it off. `--patience` overrides it. |
 
 Patterns are relative to the project and ignore case. `*` matches within a folder, `**` matches across folders, `?` matches one character, and a trailing `/` means a folder and everything in it. A pattern with no `/` matches that name at any depth, so `.env.*` also covers `apps/web/.env.local`; a pattern with a `/` is anchored to the project root. All keys are optional.
 

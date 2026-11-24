@@ -9,6 +9,20 @@ Entries for releases before 0.0.45 are not written up yet; see the
 
 ## [Unreleased]
 
+### Added
+
+- **`rescue` stops early when attempts are not making progress.** After each attempt it compares what is
+  still failing with the best result so far: fewer errors, or a later step failing (build, then lint,
+  then tests), counts as progress. After 2 attempts in a row without it, the run stops and says why,
+  instead of paying for the remaining attempts. Output it cannot count only stops a run when it is
+  exactly the same as before. Attempts whose patch did not apply, or that you declined, are not counted.
+  Set it with `--patience <n>` or `patience` in `.bugzerorc`; `0` turns it off.
+
+### Fixed
+
+- Error counting and the report now recognise TypeScript and ESLint errors in output with Windows (CRLF)
+  line endings; before, none were found there and the output was treated as one unknown error.
+
 ## [0.0.58] - 2026-11-23
 
 ### Added

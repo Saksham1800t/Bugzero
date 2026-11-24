@@ -1,5 +1,6 @@
 import { Annotation } from "@langchain/langgraph";
 import type { AIFixSuggestion, ApprovalHandler } from "@opspilot/shared";
+import type { ProgressTracker } from "./progress";
 
 export const GraphState = Annotation.Root({
   /** Absolute path to the project being fixed */
@@ -96,6 +97,21 @@ export const GraphState = Annotation.Root({
   declinedFixes: Annotation<number>({
     reducer: (total, added) => total + added,
     default: () => 0,
+  }),
+  /** How many attempts in a row may make no progress before the run stops early (0 = never stop early) */
+  patience: Annotation<number>({
+    reducer: (_, value) => value,
+    default: () => 0,
+  }),
+  /** The best result so far and how many attempts in a row did not beat it (null until there is one to compare to) */
+  progress: Annotation<ProgressTracker | null>({
+    reducer: (_, value) => value,
+    default: () => null,
+  }),
+  /** True when the run stopped before max attempts because attempts were not making progress */
+  stoppedForNoProgress: Annotation<boolean>({
+    reducer: (_, value) => value,
+    default: () => false,
   }),
   /** Per-command timeout in milliseconds for validation steps (undefined = no limit) */
   timeoutMs: Annotation<number | undefined>({

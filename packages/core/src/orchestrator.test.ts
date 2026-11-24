@@ -374,3 +374,80 @@ describe("rescue with an approval handler", () => {
     expect(result.declinedFixes).toBeUndefined();
   });
 });
+
+describe("rescue stopping early when attempts make no progress", () => {
+  let projectDir: string;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    projectDir = fs.mkdtempSync(path.join(os.tmpdir(), "bugzero-patience-test-"));
+    fs.writeFileSync(path.join(projectDir, "package.json"), JSON.stringify({ name: "demo" }));
+    mockRunValidationPipeline.mockResolvedValue({ success: false, step: "lint", output: "error" });
+    mockInvoke.mockResolvedValue({ content: "r", model: "m", usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
+    mockRunRepairWorkflow.mockResolvedValue({ success: false, attempts: 2, logs: "x", appliedFix: null, declinedFixes: 0 });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    fs.rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  const patienceGiven = () => mockRunRepairWorkflow.mock.calls[0][0].patience;
+
+  it("uses a patience of 2 and tells the loop which step failed first", async () => {
+    await orchestrateAndFix({ cwd: projectDir });
+
+    expect(patienceGiven()).toBe(2);
+    expect(mockRunRepairWorkflow).toHaveBeenCalledWith(expect.objectContaining({ initialStep: "lint" }));
+  });
+
+  it("takes patience from .bugzerorc", async () => {
+    fs.writeFileSync(path.join(projectDir, ".bugzerorc"), JSON.stringify({ patience: 4 }));
+
+    await orchestrateAndFix({ cwd: projectDir });
+
+    expect(patienceGiven()).toBe(4);
+  });
+
+  it("lets the option beat .bugzerorc, and 0 turns it off", async () => {
+    fs.writeFileSync(path.join(projectDir, ".bugzerorc"), JSON.stringify({ patience: 4 }));
+
+    await orchestrateAndFix({ cwd: projectDir, patience: 0 });
+
+    expect(patienceGiven()).toBe(0);
+  });
+
+  it("rejects a bad patience in .bugzerorc before running anything", async () => {
+    fs.writeFileSync(path.join(projectDir, ".bugzerorc"), JSON.stringify({ patience: "soon" }));
+
+    await expect(orchestrateAndFix({ cwd: projectDir })).rejects.toThrow("patience in .bugzerorc must be a whole number");
+    expect(mockRunValidationPipeline).not.toHaveBeenCalled();
+  });
+
+  it("explains an early stop, instead of saying max attempts were reached", async () => {
+    mockRunRepairWorkflow.mockResolvedValue({
+      success: false,
+      attempts: 2,
+      logs: "x",
+      appliedFix: null,
+      declinedFixes: 0,
+      stoppedForNoProgress: true,
+    });
+
+    const result = await orchestrateAndFix({ cwd: projectDir, maxAttempts: 5 });
+
+    expect(result.stoppedEarly).toBe("no-progress");
+    expect(result.attempts).toBe(2);
+    expect(result.error).toContain("Stopped early: 2 attempts in a row made no progress");
+    expect(result.error).toContain("--patience 0");
+    expect(result.error).not.toContain("Max attempts");
+  });
+
+  it("does not report an early stop when the run simply used all its attempts", async () => {
+    const result = await orchestrateAndFix({ cwd: projectDir, maxAttempts: 2 });
+
+    expect(result.stoppedEarly).toBeUndefined();
+    expect(result.error).toBe("Max attempts (2) reached without a successful build.");
+  });
+});

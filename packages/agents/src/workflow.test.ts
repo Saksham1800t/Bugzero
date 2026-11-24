@@ -17,7 +17,8 @@ vi.mock("@opspilot/patcher", () => ({
   applyPatches: mockApplyPatches,
 }));
 
-vi.mock("@opspilot/analyzers", () => ({
+vi.mock("@opspilot/analyzers", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@opspilot/analyzers")>()),
   runValidationPipeline: mockRunValidationPipeline,
 }));
 

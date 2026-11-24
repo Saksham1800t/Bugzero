@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_MAX_ATTEMPTS, resolveMaxAttempts, resolveTimeoutMs } from "./options";
+import { DEFAULT_MAX_ATTEMPTS, DEFAULT_PATIENCE, resolveMaxAttempts, resolvePatience, resolveTimeoutMs } from "./options";
 
 describe("resolveTimeoutMs", () => {
   it("means no timeout when no value is given", () => {
@@ -43,5 +43,48 @@ describe("resolveMaxAttempts", () => {
     ["Infinity", Infinity],
   ])("rejects %s", (_label, value) => {
     expect(() => resolveMaxAttempts(value)).toThrow("--max-attempts must be a whole number of 1 or more");
+  });
+});
+
+describe("resolvePatience", () => {
+  it("defaults to 2 when nothing is set", () => {
+    expect(DEFAULT_PATIENCE).toBe(2);
+    expect(resolvePatience(undefined, undefined)).toBe(2);
+  });
+
+  it("uses the .bugzerorc value when there is no flag", () => {
+    expect(resolvePatience(undefined, 4)).toBe(4);
+  });
+
+  it("lets the flag beat .bugzerorc", () => {
+    expect(resolvePatience(1, 4)).toBe(1);
+  });
+
+  it("accepts 0, which turns it off", () => {
+    expect(resolvePatience(0, undefined)).toBe(0);
+    expect(resolvePatience(undefined, 0)).toBe(0);
+  });
+
+  it.each([
+    ["a negative number", -1],
+    ["a fraction", 1.5],
+    ["NaN (e.g. from a non-numeric flag)", NaN],
+    ["Infinity", Infinity],
+  ])("rejects %s from the flag, naming the flag", (_label, value) => {
+    expect(() => resolvePatience(value, undefined)).toThrow("--patience must be a whole number of 0 or more");
+  });
+
+  it.each([
+    ["text", "two"],
+    ["a negative number", -3],
+    ["a fraction", 2.5],
+    ["a list", [2]],
+    ["null", null],
+  ])("rejects %s from .bugzerorc, naming the file", (_label, value) => {
+    expect(() => resolvePatience(undefined, value)).toThrow("patience in .bugzerorc must be a whole number of 0 or more");
+  });
+
+  it("does not let a bad .bugzerorc value matter when the flag is valid", () => {
+    expect(resolvePatience(3, "nonsense")).toBe(3);
   });
 });

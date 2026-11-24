@@ -152,6 +152,9 @@ importers:
       '@opspilot/analyzers':
         specifier: workspace:*
         version: link:../analyzers
+      '@opspilot/config':
+        specifier: workspace:*
+        version: link:../config
       '@opspilot/prompts':
         specifier: workspace:*
         version: link:../prompts

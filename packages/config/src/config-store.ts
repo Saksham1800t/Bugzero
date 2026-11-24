@@ -7,6 +7,8 @@ export interface BugZeroConfig {
   protect?: string[];
   /** Built-in protected patterns that this project permits BugZero to edit. */
   allow?: string[];
+  /** How many attempts in a row may make no progress before `rescue` stops early (0 turns it off). */
+  patience?: number;
 }
 
 const CONFIG_FILENAME = ".bugzerorc";

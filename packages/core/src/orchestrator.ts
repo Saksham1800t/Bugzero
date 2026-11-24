@@ -6,7 +6,8 @@ import path from "path";
 import { pathToFileURL } from "url";
 import { detectFramework } from "./framework-detector";
 import { buildDryRunFallbackReport, buildDryRunMetadata, buildDryRunPrompt } from "./dry-run-report";
-import { resolveMaxAttempts, resolveTimeoutMs } from "./options";
+import { getLocalConfig } from "@opspilot/config";
+import { resolveMaxAttempts, resolvePatience, resolveTimeoutMs } from "./options";
 import { assertNodeProject } from "./project-check";
 import { OpenRouterProvider } from "@opspilot/ai-provider";
 import { buildHuntDiagnosisPrompt, buildRescueFailurePrompt, buildRescueSuccessPrompt } from "./report-prompts";
@@ -15,12 +16,15 @@ import { buildHuntDiagnosisPrompt, buildRescueFailurePrompt, buildRescueSuccessP
 export const REPORT_FILENAME = "bugzero-report.md";
 
 /** Why a repair ended without success. Fixes the person declined are called out, not blamed on the attempt limit. */
-function failureMessage(maxAttempts: number, declined: number, appliedAnything: boolean): string {
+function failureMessage(maxAttempts: number, declined: number, appliedAnything: boolean, stoppedAfter?: number): string {
   const plural = declined === 1 ? "fix" : "fixes";
   if (declined > 0 && !appliedAnything) {
     return `You declined ${declined} proposed ${plural}, so nothing was changed.`;
   }
-  const base = `Max attempts (${maxAttempts}) reached without a successful build.`;
+  const base =
+    stoppedAfter !== undefined
+      ? `Stopped early: ${stoppedAfter} attempt${stoppedAfter === 1 ? "" : "s"} in a row made no progress (the errors did not get fewer and no later step was reached), so the remaining attempts were not used. Try a different model with 'bugzero vibe', or use --patience 0 to keep going regardless.`
+      : `Max attempts (${maxAttempts}) reached without a successful build.`;
   return declined > 0 ? `${base} You declined ${declined} proposed ${plural}.` : base;
 }
 
@@ -34,6 +38,11 @@ export interface OrchestrateOptions {
   cwd?: string;
   /** Maximum AI fix attempts (default: 3) */
   maxAttempts?: number;
+  /**
+   * Stop early after this many attempts in a row make no progress (default: from .bugzerorc, else 2).
+   * 0 turns it off.
+   */
+  patience?: number;
   /** When true, only analyse — never write files */
   dryRun?: boolean;
   /** Stop any build/lint/test command that runs longer than this many seconds (default: no limit) */
@@ -83,6 +92,7 @@ export async function orchestrateAndFix(
   assertNodeProject(cwd);
   const maxAttempts = resolveMaxAttempts(options.maxAttempts);
   const timeoutMs = resolveTimeoutMs(options.timeoutSeconds);
+  const patience = resolvePatience(options.patience, getLocalConfig(cwd).patience);
 
   // ── Step 1: Initial validation run ──────────────────────────────────────
   console.log(`[BugZero] Running validation pipeline in: ${cwd}`);
@@ -143,6 +153,8 @@ export async function orchestrateAndFix(
     maxAttempts,
     timeoutMs,
     approve: options.approve,
+    patience,
+    initialStep: pipelineResult.step,
   });
 
   const result = {
@@ -150,7 +162,13 @@ export async function orchestrateAndFix(
     attempts: finalState.attempts,
     finalOutput: finalState.logs || pipelineResult.output,
     appliedFix: finalState.appliedFix ?? undefined,
-    error: finalState.success ? undefined : failureMessage(maxAttempts, finalState.declinedFixes ?? 0, Boolean(finalState.appliedFix)),
+    error: finalState.success ? undefined : failureMessage(
+          maxAttempts,
+          finalState.declinedFixes ?? 0,
+          Boolean(finalState.appliedFix),
+          finalState.stoppedForNoProgress ? patience : undefined
+        ),
+    stoppedEarly: finalState.stoppedForNoProgress ? ("no-progress" as const) : undefined,
     declinedFixes: finalState.declinedFixes ? finalState.declinedFixes : undefined,
     modelUsed: finalState.modelUsed,
     promptTokens: finalState.promptTokens,

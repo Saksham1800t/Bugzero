@@ -54,6 +54,8 @@ export interface FixResult {
   promptPreview?: string;
   /** How many proposed fixes the person declined (only set when approval was requested and some were declined) */
   declinedFixes?: number;
+  /** Set when the run stopped before using all its attempts because they were not making progress */
+  stoppedEarly?: "no-progress";
 }
 
 /** What a person is shown before a proposed fix is written (see `rescue --approve`). */

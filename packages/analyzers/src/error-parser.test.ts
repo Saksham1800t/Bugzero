@@ -91,3 +91,14 @@ FAIL src/sum.test.ts
     expect(parseErrors("   \n  ")).toEqual([]);
   });
 });
+
+describe("parseErrors with Windows line endings", () => {
+  it("finds TypeScript and ESLint errors in output that ends its lines with CRLF", () => {
+    const ts = ["src/a.ts(1,1): error TS2304: Cannot find name 'foo'.", "src/b.ts(2,2): error TS2322: Bad type."].join("\r\n") + "\r\n";
+    expect(parseErrors(ts).map((e) => e.type)).toEqual(["typescript", "typescript"]);
+
+    const eslint = "/p/src/a.ts\r\n  10:5  error  'foo' is not defined  no-undef\r\n";
+    expect(parseErrors(eslint)).toHaveLength(1);
+    expect(parseErrors(eslint)[0].type).toBe("eslint");
+  });
+});
