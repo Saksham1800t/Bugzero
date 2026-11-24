@@ -267,6 +267,175 @@ describe("repair workflow end to end (fake model, real patcher and pipeline)", (
     });
   });
 
+  describe("re-running only the failing tests", () => {
+    // A stand-in for Jest at node_modules/.bin/jest. It records how it was called in runs.json, prints a FAIL line
+    // for every test file that still says "broken", and can be told (with a file named reject-args) to refuse
+    // arguments, the way a runner does when it cannot find the files it was given.
+    const RUNNER = [
+      'const fs = require("fs");',
+      'const log = require(require("path").resolve("log.js"));',
+      "const args = process.argv.slice(2);",
+      'log("tests " + (args.length ? args.join(" ") : "(all)"));',
+      'if (args.length && fs.existsSync("reject-args")) { console.error("No test files found, exiting with code 1"); process.exit(1); }',
+      'if (args.length) console.log("ran-with-args");',
+      'const files = args.length ? args : fs.readdirSync(".").filter((f) => f.endsWith(".test.js"));',
+      "let failed = false;",
+      'for (const f of files) if (fs.readFileSync(f, "utf8").includes("broken")) { console.log("FAIL " + f); failed = true; }',
+      "process.exit(failed ? 1 : 0);",
+    ].join("\n");
+
+    const BUILD = [
+      'const fs = require("fs");',
+      'require(require("path").resolve("log.js"))("build");',
+      'if (fs.readFileSync("flag.txt", "utf8").includes("broken")) { console.error("src/x.ts(1,1): error TS2304: Cannot find name y."); process.exit(1); }',
+    ].join("\n");
+
+    const FAILING = ["FAIL one.test.js", "FAIL two.test.js"].join("\n");
+
+    const runs = (): string[] => JSON.parse(fs.readFileSync(path.join(projectDir, "runs.json"), "utf8"));
+
+    beforeEach(() => {
+      fs.writeFileSync(
+        path.join(projectDir, "package.json"),
+        JSON.stringify({ name: "demo", scripts: { build: "node build.js", test: "node node_modules/.bin/jest" } })
+      );
+      fs.writeFileSync(
+        path.join(projectDir, "log.js"),
+        [
+          'const fs = require("fs");',
+          "module.exports = (entry) => {",
+          '  const list = fs.existsSync("runs.json") ? JSON.parse(fs.readFileSync("runs.json", "utf8")) : [];',
+          "  list.push(entry);",
+          '  fs.writeFileSync("runs.json", JSON.stringify(list));',
+          "};",
+        ].join("\n")
+      );
+      fs.mkdirSync(path.join(projectDir, "node_modules", ".bin"), { recursive: true });
+      fs.writeFileSync(path.join(projectDir, "node_modules", ".bin", "jest"), RUNNER);
+      fs.writeFileSync(path.join(projectDir, "build.js"), BUILD);
+      fs.writeFileSync(path.join(projectDir, "flag.txt"), "state: FIXED\n");
+      fs.writeFileSync(path.join(projectDir, "one.test.js"), "state: broken\n");
+      fs.writeFileSync(path.join(projectDir, "two.test.js"), "state: broken\n");
+    });
+
+    const run = (extra: { focusTests?: boolean; maxAttempts?: number; logs?: string; initialStep?: "build" | "test" } = {}) =>
+      runRepairWorkflow({
+        cwd: projectDir,
+        logs: extra.logs ?? FAILING,
+        initialStep: extra.initialStep ?? "test",
+        maxAttempts: extra.maxAttempts ?? 4,
+        focusTests: extra.focusTests,
+      });
+
+    it("re-runs only the failing test files while they fail, then runs the full pipeline once they pass", async () => {
+      scriptedReplies.push(reply("one.test.js", "one"), reply("two.test.js", "two"));
+
+      const state = await run();
+
+      expect(state.success).toBe(true);
+      expect(state.attempts).toBe(2);
+      expect(runs()).toEqual([
+        "tests one.test.js two.test.js", // attempt 1: only the files that failed (two still does)
+        "tests two.test.js", // attempt 2: now only the one that is left, which passes
+        "build", // so the full pipeline confirms the fix
+        "tests (all)",
+      ]);
+    });
+
+    it("gives the model the focused output, not the whole run again", async () => {
+      scriptedReplies.push(reply("one.test.js", "one"), reply("two.test.js", "two"));
+
+      await run();
+
+      expect(receivedPrompts[1]).toContain("ran-with-args");
+      expect(receivedPrompts[1]).toContain("FAIL two.test.js");
+      expect(receivedPrompts[1]).not.toContain("FAIL one.test.js");
+    });
+
+    it("reports a problem the full pipeline finds after the focused tests pass, instead of calling the fix done", async () => {
+      fs.writeFileSync(path.join(projectDir, "flag.txt"), "state: broken\n");
+      scriptedReplies.push(
+        JSON.stringify({
+          rootCause: "tests",
+          explanation: "fixed both",
+          patches: [
+            { filePath: "one.test.js", search: "broken", replace: "FIXED" },
+            { filePath: "two.test.js", search: "broken", replace: "FIXED" },
+          ],
+        })
+      );
+
+      const state = await run({ maxAttempts: 1 });
+
+      expect(state.success).toBe(false);
+      expect(runs()).toEqual(["tests one.test.js two.test.js", "build"]);
+      expect(state.logs).toContain("TS2304");
+    });
+
+    it("runs the full pipeline every time when focusTests is false", async () => {
+      scriptedReplies.push(reply("one.test.js", "one"), reply("two.test.js", "two"));
+
+      const state = await run({ focusTests: false });
+
+      expect(state.success).toBe(true);
+      expect(runs()).toEqual(["build", "tests (all)", "build", "tests (all)"]);
+    });
+
+    it("does not narrow anything when the failing step was not the tests", async () => {
+      fs.writeFileSync(path.join(projectDir, "flag.txt"), "state: broken\n");
+      fs.writeFileSync(path.join(projectDir, "one.test.js"), "state: FIXED\n");
+      fs.writeFileSync(path.join(projectDir, "two.test.js"), "state: FIXED\n");
+      scriptedReplies.push(reply("flag.txt", "build"));
+
+      const state = await run({ initialStep: "build", logs: "src/x.ts(1,1): error TS2304: Cannot find name y." });
+
+      expect(state.success).toBe(true);
+      expect(runs()).toEqual(["build", "tests (all)"]);
+    });
+
+    it("runs the full pipeline when the test script is not one it recognises", async () => {
+      fs.writeFileSync(
+        path.join(projectDir, "package.json"),
+        JSON.stringify({ name: "demo", scripts: { build: "node build.js", test: "node runner.js" } })
+      );
+      fs.writeFileSync(path.join(projectDir, "runner.js"), RUNNER);
+      scriptedReplies.push(
+        JSON.stringify({
+          rootCause: "tests",
+          explanation: "fixed both",
+          patches: [
+            { filePath: "one.test.js", search: "broken", replace: "FIXED" },
+            { filePath: "two.test.js", search: "broken", replace: "FIXED" },
+          ],
+        })
+      );
+
+      const state = await run();
+
+      expect(state.success).toBe(true);
+      expect(runs()).toEqual(["build", "tests (all)"]);
+    });
+
+    it("falls back to the full pipeline when the runner rejects the focused run, rather than trusting it", async () => {
+      fs.writeFileSync(path.join(projectDir, "reject-args"), "");
+      scriptedReplies.push(
+        JSON.stringify({
+          rootCause: "tests",
+          explanation: "fixed both",
+          patches: [
+            { filePath: "one.test.js", search: "broken", replace: "FIXED" },
+            { filePath: "two.test.js", search: "broken", replace: "FIXED" },
+          ],
+        })
+      );
+
+      const state = await run();
+
+      expect(state.success).toBe(true);
+      expect(runs()).toEqual(["tests one.test.js two.test.js", "build", "tests (all)"]);
+    });
+  });
+
   it("refuses a patch aimed outside the project, then still finishes the repair", async () => {
     const outsideFile = path.join(path.dirname(projectDir), `bugzero-outside-${path.basename(projectDir)}.txt`);
     fs.writeFileSync(outsideFile, "state: broken\n");

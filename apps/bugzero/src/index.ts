@@ -120,6 +120,7 @@ program
   .option("-n, --max-attempts <number>", "Maximum AI fix attempts", "3")
   .option("-t, --timeout <seconds>", TIMEOUT_DESCRIPTION)
   .option("--patience <n>", "Stop early after this many attempts in a row make no progress (default 2, 0 turns it off)")
+  .option("--no-focus-tests", "Always run the full build, lint and tests, instead of re-running only the failing test files between attempts")
   .option("--dry-run", "Analyse only — print what would be fixed without writing files", false)
   .option("--approve", "Show each proposed fix as a diff and ask before writing it (needs an interactive terminal)")
   .option("--print-prompt", "Print the exact prompt that would be sent to the AI model, then stop (nothing is sent, no files are written)")
@@ -136,6 +137,8 @@ program
       const timeoutSeconds = parseTimeout(opts.timeout);
       const patience = opts.patience === undefined ? undefined : Number(opts.patience);
       resolvePatience(patience, undefined); // a bad --patience fails here, before anything runs
+      // Commander gives true unless --no-focus-tests was passed; only an explicit false should beat .bugzerorc.
+      const focusTests: boolean | undefined = opts.focusTests === false ? false : undefined;
       const dryRun: boolean = opts.dryRun;
 
       // Approval only matters when something would be written, so --dry-run and --print-prompt do not need it.
@@ -159,10 +162,11 @@ program
       console.log(`   Max attempts: ${maxAttempts}`);
       if (timeoutSeconds !== undefined) console.log(`   Timeout:     ${timeoutSeconds}s per command`);
       if (patience !== undefined) console.log(`   Patience:    ${patience === 0 ? "off" : `${patience} attempt(s) without progress`}`);
+      if (focusTests === false) console.log(`   Focus tests: off (the full pipeline runs every time)`);
       if (dryRun) console.log(`   Mode:        DRY RUN (no files will be modified)`);
       console.log();
 
-      const result = await orchestrateAndFix({ cwd, maxAttempts, dryRun, timeoutSeconds, printPrompt, approve, patience });
+      const result = await orchestrateAndFix({ cwd, maxAttempts, dryRun, timeoutSeconds, printPrompt, approve, patience, focusTests });
 
       if (result.promptPreview !== undefined) {
         // --print-prompt: show the prompt and stop. Nothing was sent to a model.

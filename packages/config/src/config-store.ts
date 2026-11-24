@@ -9,6 +9,8 @@ export interface BugZeroConfig {
   allow?: string[];
   /** How many attempts in a row may make no progress before `rescue` stops early (0 turns it off). */
   patience?: number;
+  /** Set to false to stop `rescue` re-running only the failing test files between attempts. */
+  focusTests?: boolean;
 }
 
 const CONFIG_FILENAME = ".bugzerorc";

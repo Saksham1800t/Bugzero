@@ -444,6 +444,25 @@ describe("rescue stopping early when attempts make no progress", () => {
     expect(result.error).not.toContain("Max attempts");
   });
 
+  it("re-runs only the failing tests by default, and .bugzerorc or the option can turn that off", async () => {
+    await orchestrateAndFix({ cwd: projectDir });
+    expect(mockRunRepairWorkflow.mock.calls[0][0].focusTests).toBe(true);
+
+    fs.writeFileSync(path.join(projectDir, ".bugzerorc"), JSON.stringify({ focusTests: false }));
+    await orchestrateAndFix({ cwd: projectDir });
+    expect(mockRunRepairWorkflow.mock.calls[1][0].focusTests).toBe(false);
+
+    await orchestrateAndFix({ cwd: projectDir, focusTests: true });
+    expect(mockRunRepairWorkflow.mock.calls[2][0].focusTests).toBe(true);
+  });
+
+  it("rejects a bad focusTests in .bugzerorc before running anything", async () => {
+    fs.writeFileSync(path.join(projectDir, ".bugzerorc"), JSON.stringify({ focusTests: "sometimes" }));
+
+    await expect(orchestrateAndFix({ cwd: projectDir })).rejects.toThrow("focusTests in .bugzerorc must be true or false");
+    expect(mockRunValidationPipeline).not.toHaveBeenCalled();
+  });
+
   it("does not report an early stop when the run simply used all its attempts", async () => {
     const result = await orchestrateAndFix({ cwd: projectDir, maxAttempts: 2 });
 

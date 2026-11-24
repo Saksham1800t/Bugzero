@@ -228,6 +228,8 @@ The whole proposed fix is shown at once, because a fix that spans several files 
 
 **Stuck runs stop early.** After each attempt BugZero compares what is still failing with the best result so far. It counts as progress when there are fewer errors, or when a later step is now the one failing (the build passes and lint fails, or lint passes and the tests fail), even if that step shows more errors. If 2 attempts in a row make no progress, it stops and says why, instead of paying for the remaining attempts. Output BugZero cannot count only stops a run when it is exactly the same as before. Attempts whose patch could not be applied, or that you declined, do not count. Change the limit with `--patience <n>` or `patience` in `.bugzerorc`; `0` turns it off.
 
+**Failing tests are re-run on their own first.** While tests are what is failing, BugZero re-runs only the test files that failed after each attempt, which is much quicker than the whole pipeline on a big project. Once those files pass it runs the full build, lint and tests, so a fix is never called done on a partial check. This works for projects whose `test` script runs Jest or Vitest as one plain command (for example `vitest run` or `jest --ci`); for any other script, or when no failing test file can be found in the output, the full pipeline runs as before. Turn it off with `--no-focus-tests` or `"focusTests": false` in `.bugzerorc`.
+
 <details>
 <summary><strong>Options for <code>rescue</code></strong></summary>
 
@@ -237,6 +239,7 @@ The whole proposed fix is shown at once, because a fix that spans several files 
 | `--max-attempts <n>` | `-n` | `3` | Maximum AI fix iterations before giving up |
 | `--timeout <seconds>` | `-t` | none | Stop any build, lint, or test command that runs longer than this many seconds |
 | `--patience <n>` | | `2` | Stop early after this many attempts in a row make no progress. `0` turns it off |
+| `--no-focus-tests` | | off | Always run the full build, lint and tests, instead of re-running only the failing test files between attempts |
 | `--dry-run` | | `false` | Analyze only — no files will be written |
 | `--approve` | | `false` | Show each proposed fix as a diff and ask before writing it. Needs an interactive terminal |
 | `--print-prompt` | | `false` | Print the exact prompt that would be sent to the AI model, then stop. Nothing is sent and no files are written |
@@ -315,7 +318,8 @@ BugZero reads a `.bugzerorc` JSON file in your target project directory to pick 
   "model": "deepseek/deepseek-chat",
   "protect": ["config/prod.json", "migrations/**"],
   "allow": [".env.example"],
-  "patience": 2
+  "patience": 2,
+  "focusTests": true
 }
 ```
 
@@ -325,6 +329,7 @@ BugZero reads a `.bugzerorc` JSON file in your target project directory to pick 
 | `protect` | Extra files BugZero must never edit, added to the built-in list (see Protected files above). |
 | `allow` | Files from the built-in list that BugZero may edit and read after all, such as `.env.example`. A `protect` pattern still wins. |
 | `patience` | How many attempts in a row may make no progress before `rescue` stops early. Default 2, `0` turns it off. `--patience` overrides it. |
+| `focusTests` | Set to `false` to always run the full pipeline, instead of re-running only the failing test files between attempts. Default `true`. `--no-focus-tests` overrides it. |
 
 Patterns are relative to the project and ignore case. `*` matches within a folder, `**` matches across folders, `?` matches one character, and a trailing `/` means a folder and everything in it. A pattern with no `/` matches that name at any depth, so `.env.*` also covers `apps/web/.env.local`; a pattern with a `/` is anchored to the project root. All keys are optional.
 

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_MAX_ATTEMPTS, DEFAULT_PATIENCE, resolveMaxAttempts, resolvePatience, resolveTimeoutMs } from "./options";
+import {
+  DEFAULT_MAX_ATTEMPTS,
+  DEFAULT_PATIENCE,
+  resolveFocusTests,
+  resolveMaxAttempts,
+  resolvePatience,
+  resolveTimeoutMs,
+} from "./options";
 
 describe("resolveTimeoutMs", () => {
   it("means no timeout when no value is given", () => {
@@ -86,5 +93,34 @@ describe("resolvePatience", () => {
 
   it("does not let a bad .bugzerorc value matter when the flag is valid", () => {
     expect(resolvePatience(3, "nonsense")).toBe(3);
+  });
+});
+
+describe("resolveFocusTests", () => {
+  it("is on when nothing is set", () => {
+    expect(resolveFocusTests(undefined, undefined)).toBe(true);
+  });
+
+  it("uses the .bugzerorc value when there is no flag", () => {
+    expect(resolveFocusTests(undefined, false)).toBe(false);
+    expect(resolveFocusTests(undefined, true)).toBe(true);
+  });
+
+  it("lets the flag beat .bugzerorc", () => {
+    expect(resolveFocusTests(false, true)).toBe(false);
+    expect(resolveFocusTests(true, false)).toBe(true);
+  });
+
+  it.each([
+    ["text", "no"],
+    ["a number", 0],
+    ["null", null],
+    ["a list", [false]],
+  ])("rejects %s in .bugzerorc, naming the file", (_label, value) => {
+    expect(() => resolveFocusTests(undefined, value)).toThrow("focusTests in .bugzerorc must be true or false");
+  });
+
+  it("does not let a bad .bugzerorc value matter when the flag is given", () => {
+    expect(resolveFocusTests(false, "nonsense")).toBe(false);
   });
 });

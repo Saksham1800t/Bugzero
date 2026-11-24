@@ -26,6 +26,20 @@ export function resolveMaxAttempts(value: number | undefined): number {
   return attempts;
 }
 
+/**
+ * Whether `rescue` may re-run only the failing test files while it is still failing them. On unless turned off
+ * with `--no-focus-tests` or `"focusTests": false` in `.bugzerorc`; the flag wins. Anything in `.bugzerorc` that
+ * is not true or false is rejected, naming the file, rather than being ignored.
+ */
+export function resolveFocusTests(flag: boolean | undefined, configured: unknown): boolean {
+  if (flag !== undefined) return flag;
+  if (configured === undefined) return true;
+  if (typeof configured !== "boolean") {
+    throw new Error(`focusTests in .bugzerorc must be true or false (received ${JSON.stringify(configured)}).`);
+  }
+  return configured;
+}
+
 /** How many attempts in a row may make no progress before a run stops early, unless set otherwise. */
 export const DEFAULT_PATIENCE = 2;
 

@@ -9,6 +9,17 @@ Entries for releases before 0.0.45 are not written up yet; see the
 
 ## [Unreleased]
 
+## [0.0.60] - 2026-11-24
+
+### Added
+
+- **`rescue` re-runs only the failing tests first.** While tests are what is failing, each attempt is
+  checked by re-running just the test files that failed (read from the Jest or Vitest output), instead of
+  the whole build, lint and test pipeline. Once those files pass, the full pipeline runs, so a fix is never
+  called done on a partial check. It only applies when the `test` script is a single plain Jest or Vitest
+  command; otherwise, or when the focused run does not look like a real test run, the full pipeline runs
+  as before. On by default; turn it off with `--no-focus-tests` or `"focusTests": false` in `.bugzerorc`.
+
 ## [0.0.59] - 2026-11-24
 
 ### Added

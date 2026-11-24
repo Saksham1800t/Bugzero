@@ -5,4 +5,5 @@ export * from "./error-parser";
 export * from "./run-command";
 export * from "./pipeline";
 export * from "./package-manager";
-export * from "./scripts";
+export * from "./scripts";
+export * from "./focused-tests";

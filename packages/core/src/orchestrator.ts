@@ -7,7 +7,7 @@ import { pathToFileURL } from "url";
 import { detectFramework } from "./framework-detector";
 import { buildDryRunFallbackReport, buildDryRunMetadata, buildDryRunPrompt } from "./dry-run-report";
 import { getLocalConfig } from "@opspilot/config";
-import { resolveMaxAttempts, resolvePatience, resolveTimeoutMs } from "./options";
+import { resolveFocusTests, resolveMaxAttempts, resolvePatience, resolveTimeoutMs } from "./options";
 import { assertNodeProject } from "./project-check";
 import { OpenRouterProvider } from "@opspilot/ai-provider";
 import { buildHuntDiagnosisPrompt, buildRescueFailurePrompt, buildRescueSuccessPrompt } from "./report-prompts";
@@ -43,6 +43,11 @@ export interface OrchestrateOptions {
    * 0 turns it off.
    */
   patience?: number;
+  /**
+   * `rescue` only: while tests are what is failing, re-run just the failing test files between attempts, and run
+   * the full pipeline once they pass (default: from .bugzerorc, else true).
+   */
+  focusTests?: boolean;
   /** When true, only analyse — never write files */
   dryRun?: boolean;
   /** Stop any build/lint/test command that runs longer than this many seconds (default: no limit) */
@@ -92,7 +97,9 @@ export async function orchestrateAndFix(
   assertNodeProject(cwd);
   const maxAttempts = resolveMaxAttempts(options.maxAttempts);
   const timeoutMs = resolveTimeoutMs(options.timeoutSeconds);
-  const patience = resolvePatience(options.patience, getLocalConfig(cwd).patience);
+  const config = getLocalConfig(cwd);
+  const patience = resolvePatience(options.patience, config.patience);
+  const focusTests = resolveFocusTests(options.focusTests, config.focusTests);
 
   // ── Step 1: Initial validation run ──────────────────────────────────────
   console.log(`[BugZero] Running validation pipeline in: ${cwd}`);
@@ -154,6 +161,7 @@ export async function orchestrateAndFix(
     timeoutMs,
     approve: options.approve,
     patience,
+    focusTests,
     initialStep: pipelineResult.step,
   });
 

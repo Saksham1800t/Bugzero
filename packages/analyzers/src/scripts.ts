@@ -16,6 +16,19 @@ export function readScripts(cwd: string = process.cwd()): string[] {
   }
 }
 
+/** The command a package.json script runs, or undefined when there is no such script (or it is not a string). */
+export function readScriptText(cwd: string, name: string): string | undefined {
+  try {
+    const pkgPath = path.join(cwd, "package.json");
+    if (!fs.existsSync(pkgPath)) return undefined;
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+    const text = pkg?.scripts?.[name];
+    return typeof text === "string" ? text : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Runs a package.json script with the project's package manager. If the
  * project doesn't define the script, the step is reported as skipped

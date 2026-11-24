@@ -4,7 +4,13 @@ import { OpenRouterProvider } from "@opspilot/ai-provider";
 import { buildAnalysisPrompt } from "@opspilot/prompts";
 import { getProtectionSettings } from "@opspilot/config";
 import { applyPatches, previewPatches, renderUnifiedDiff } from "@opspilot/patcher";
-import { runValidationPipeline } from "@opspilot/analyzers";
+import {
+  planFocusedTests,
+  runFocusedTests,
+  runValidationPipeline,
+  usableFocusedResult,
+  type PipelineResult,
+} from "@opspilot/analyzers";
 import { describeSnapshot, recordAttempt, snapshotOf, startTracking, type PipelineStep } from "./progress";
 import { createProtectedPathRules, type AIFixSuggestion, type ApprovalHandler } from "@opspilot/shared";
 
@@ -131,6 +137,37 @@ async function applyFixNode(state: typeof GraphState.State) {
   };
 }
 
+/**
+ * Checks whether the project passes now. While the tests are what is failing, the files that failed are re-run
+ * on their own first, which is much quicker than the whole pipeline on a big project. That is only a shortcut for
+ * attempts that still fail: once those files pass, the full pipeline runs, so a fix is never called done on a
+ * partial check. When the failing files or the test runner cannot be worked out, or the focused run does not
+ * look like a real test run, the full pipeline runs as it always did.
+ */
+async function validate(state: typeof GraphState.State): Promise<PipelineResult> {
+  const options = { timeoutMs: state.timeoutMs };
+
+  if (state.focusTests !== false && state.progress?.last.step === "test") {
+    const plan = planFocusedTests(state.cwd, state.logs);
+    if (plan) {
+      console.log(
+        `[BugZero] Re-running only the failing test file${plan.files.length === 1 ? "" : "s"}: ${plan.files.join(", ")} (the full pipeline runs once they pass)…`
+      );
+      const focused = await runFocusedTests(plan, state.cwd, options);
+      if (usableFocusedResult(state.cwd, focused)) {
+        return { success: false, step: "test", output: focused.output };
+      }
+      console.log(
+        focused.success
+          ? "[BugZero] Those tests pass now — running the full pipeline to confirm…"
+          : "[BugZero] The focused run did not report any failing test file, so it is not trusted — running the full pipeline instead…"
+      );
+    }
+  }
+
+  return runValidationPipeline(state.cwd, options);
+}
+
 // ── Node: re-run the pipeline to verify the fix worked ───────────────────
 async function verifyNode(state: typeof GraphState.State) {
   // If this attempt's patch failed, do not run the validation pipeline (saves time) and preserve the warning in logs
@@ -143,7 +180,7 @@ async function verifyNode(state: typeof GraphState.State) {
   }
 
   console.log("[BugZero] Re-running validation pipeline to verify fix…");
-  const result = await runValidationPipeline(state.cwd, { timeoutMs: state.timeoutMs });
+  const result = await validate(state);
 
   if (result.success) {
     console.log("[BugZero] ✅ Validation succeeded!");
@@ -203,6 +240,11 @@ export interface RepairInput {
    * (build, then lint, then tests) failing. 0 or not given means never stop early.
    */
   patience?: number;
+  /**
+   * While tests are what is failing, re-run just the failing test files between attempts, and run the full
+   * pipeline once they pass. Defaults to true; false always runs the full pipeline.
+   */
+  focusTests?: boolean;
   /** Which step the starting failure came from; lets the very first attempt be compared with it */
   initialStep?: PipelineStep;
 }

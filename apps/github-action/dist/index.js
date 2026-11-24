@@ -26215,8 +26215,205 @@ var init_execa = __esm({
   }
 });
 
-// ../../packages/analyzers/dist/index.js
+// ../../packages/shared/dist/index.js
 var require_dist = __commonJS({
+  "../../packages/shared/dist/index.js"(exports2, module2) {
+    "use strict";
+    var __create2 = Object.create;
+    var __defProp2 = Object.defineProperty;
+    var __getOwnPropDesc2 = Object.getOwnPropertyDescriptor;
+    var __getOwnPropNames2 = Object.getOwnPropertyNames;
+    var __getProtoOf2 = Object.getPrototypeOf;
+    var __hasOwnProp2 = Object.prototype.hasOwnProperty;
+    var __export2 = (target, all) => {
+      for (var name in all)
+        __defProp2(target, name, { get: all[name], enumerable: true });
+    };
+    var __copyProps2 = (to, from, except, desc) => {
+      if (from && typeof from === "object" || typeof from === "function") {
+        for (let key of __getOwnPropNames2(from))
+          if (!__hasOwnProp2.call(to, key) && key !== except)
+            __defProp2(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc2(from, key)) || desc.enumerable });
+      }
+      return to;
+    };
+    var __toESM2 = (mod, isNodeMode, target) => (target = mod != null ? __create2(__getProtoOf2(mod)) : {}, __copyProps2(
+      // If the importer is in node compatibility mode or this is not an ESM
+      // file that has been converted to a CommonJS file using a Babel-
+      // compatible transform (i.e. "__esModule" has not been set), then set
+      // "default" to the CommonJS "module.exports" for node compatibility.
+      isNodeMode || !mod || !mod.__esModule ? __defProp2(target, "default", { value: mod, enumerable: true }) : target,
+      mod
+    ));
+    var __toCommonJS2 = (mod) => __copyProps2(__defProp2({}, "__esModule", { value: true }), mod);
+    var index_exports = {};
+    __export2(index_exports, {
+      DEFAULT_PROTECTED_PATTERNS: () => DEFAULT_PROTECTED_PATTERNS,
+      DEFAULT_SECRET_PATTERNS: () => DEFAULT_SECRET_PATTERNS,
+      createProtectedPathRules: () => createProtectedPathRules,
+      isInsideDirectory: () => isInsideDirectory,
+      isLexicallyInside: () => isLexicallyInside,
+      projectRelativePaths: () => projectRelativePaths,
+      resolveInsideProject: () => resolveInsideProject,
+      uniqueFilePaths: () => uniqueFilePaths2
+    });
+    module2.exports = __toCommonJS2(index_exports);
+    function uniqueFilePaths2(patches) {
+      return [...new Set(patches.map((patch) => patch.filePath))];
+    }
+    var import_fs2 = __toESM2(require("fs"));
+    var import_path2 = __toESM2(require("path"));
+    function isLexicallyInside(root, target) {
+      const relative = import_path2.default.relative(import_path2.default.resolve(root), import_path2.default.resolve(target));
+      const escapes = relative === ".." || relative.startsWith(`..${import_path2.default.sep}`) || import_path2.default.isAbsolute(relative);
+      return !escapes;
+    }
+    function isInsideDirectory(root, target) {
+      const absoluteTarget = import_path2.default.resolve(target);
+      if (!isLexicallyInside(root, absoluteTarget)) return false;
+      try {
+        let probe = absoluteTarget;
+        while (!import_fs2.default.existsSync(probe)) {
+          const parent = import_path2.default.dirname(probe);
+          if (parent === probe) return false;
+          probe = parent;
+        }
+        return isLexicallyInside(import_fs2.default.realpathSync.native(root), import_fs2.default.realpathSync.native(probe));
+      } catch {
+        return false;
+      }
+    }
+    function resolveInsideProject(cwd, filePath) {
+      if (typeof filePath !== "string" || filePath.trim() === "") {
+        return { ok: false, error: "The file path is empty. Use a path relative to the project root." };
+      }
+      if (filePath.includes("\0")) {
+        return { ok: false, error: "The file path contains a null character." };
+      }
+      const absolutePath = import_path2.default.resolve(cwd, filePath);
+      if (import_path2.default.resolve(cwd) === absolutePath) {
+        return { ok: false, error: `"${filePath}" is the project directory itself, not a file.` };
+      }
+      if (!isInsideDirectory(cwd, absolutePath)) {
+        return {
+          ok: false,
+          error: `"${filePath}" is outside the project directory. Use a path relative to the project root.`
+        };
+      }
+      return { ok: true, absolutePath };
+    }
+    var import_fs22 = __toESM2(require("fs"));
+    var import_path22 = __toESM2(require("path"));
+    var DEFAULT_SECRET_PATTERNS = [".env", ".env.*", "*.pem", "*.key"];
+    var DEFAULT_PROTECTED_PATTERNS = [
+      ...DEFAULT_SECRET_PATTERNS,
+      ".git/",
+      ".github/workflows/",
+      ".gitlab-ci.yml",
+      ".circleci/",
+      "azure-pipelines.yml",
+      "bitbucket-pipelines.yml",
+      "Jenkinsfile",
+      "package-lock.json",
+      "pnpm-lock.yaml",
+      "yarn.lock",
+      "bun.lockb",
+      "node_modules/",
+      "*.opspilot.bak",
+      "*.opspilot.bak.sha"
+    ];
+    function normalizePath(relPath) {
+      return relPath.replace(/\\/g, "/").replace(/^(\.\/)+/, "").replace(/^\/+/, "").toLowerCase();
+    }
+    function compilePattern(pattern) {
+      if (typeof pattern !== "string") return void 0;
+      let p = pattern.trim().replace(/\\/g, "/").toLowerCase();
+      if (p === "" || p.startsWith("#")) return void 0;
+      const anchored = p.startsWith("/") || p.replace(/\/+$/, "").includes("/");
+      p = p.replace(/^(\.\/)+/, "").replace(/^\/+/, "").replace(/\/+$/, "");
+      if (p === "") return void 0;
+      let source = "";
+      for (let i = 0; i < p.length; i++) {
+        const c = p[i];
+        if (c === "*") {
+          if (p[i + 1] === "*") {
+            i++;
+            if (p[i + 1] === "/") {
+              i++;
+              source += "(?:.*/)?";
+            } else {
+              source += ".*";
+            }
+          } else {
+            source += "[^/]*";
+          }
+        } else if (c === "?") {
+          source += "[^/]";
+        } else {
+          source += c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+        }
+      }
+      const regex = new RegExp(`^${anchored ? "" : "(?:.*/)?"}${source}(?:/.*)?$`);
+      return { pattern: pattern.trim(), test: (normalizedPath) => regex.test(normalizedPath) };
+    }
+    function compileAll(patterns) {
+      return (patterns ?? []).map(compilePattern).filter((m) => m !== void 0);
+    }
+    function firstMatch(matchers, normalizedPath) {
+      return matchers.find((m) => m.test(normalizedPath));
+    }
+    function createProtectedPathRules(settings = {}) {
+      const defaults = compileAll(DEFAULT_PROTECTED_PATTERNS);
+      const secrets = compileAll(DEFAULT_SECRET_PATTERNS);
+      const extra = compileAll(settings.protect);
+      const allowed = compileAll(settings.allow);
+      return {
+        editBlockedBy(relPath) {
+          const normalized = normalizePath(relPath);
+          const own = firstMatch(extra, normalized);
+          if (own) return own.pattern;
+          if (firstMatch(allowed, normalized)) return void 0;
+          return firstMatch(defaults, normalized)?.pattern;
+        },
+        secretBlockedBy(relPath) {
+          const normalized = normalizePath(relPath);
+          if (firstMatch(allowed, normalized)) return void 0;
+          return firstMatch(secrets, normalized)?.pattern;
+        }
+      };
+    }
+    function toRelative(root, target) {
+      return import_path22.default.relative(root, target).split(import_path22.default.sep).join("/");
+    }
+    function realPathAllowingMissing(target) {
+      let current = import_path22.default.resolve(target);
+      const rest = [];
+      while (true) {
+        try {
+          return import_path22.default.join(import_fs22.default.realpathSync.native(current), ...rest.reverse());
+        } catch {
+          const parent = import_path22.default.dirname(current);
+          if (parent === current) return void 0;
+          rest.push(import_path22.default.basename(current));
+          current = parent;
+        }
+      }
+    }
+    function projectRelativePaths(cwd, absolutePath) {
+      const paths = [toRelative(import_path22.default.resolve(cwd), import_path22.default.resolve(absolutePath))];
+      const realRoot = realPathAllowingMissing(cwd);
+      const realTarget = realPathAllowingMissing(absolutePath);
+      if (realRoot && realTarget) {
+        const real = toRelative(realRoot, realTarget);
+        if (real !== paths[0] && !real.startsWith("..")) paths.push(real);
+      }
+      return paths;
+    }
+  }
+});
+
+// ../../packages/analyzers/dist/index.js
+var require_dist2 = __commonJS({
   "../../packages/analyzers/dist/index.js"(exports2, module2) {
     "use strict";
     var __create2 = Object.create;
@@ -26249,15 +26446,21 @@ var require_dist = __commonJS({
     var index_exports = {};
     __export2(index_exports, {
       detectPackageManager: () => detectPackageManager2,
+      detectTestRunner: () => detectTestRunner,
+      findFailingTestFiles: () => findFailingTestFiles,
       getRunScriptCommand: () => getRunScriptCommand,
       parseErrors: () => parseErrors,
+      planFocusedTests: () => planFocusedTests,
+      readScriptText: () => readScriptText,
       readScripts: () => readScripts,
       runBuild: () => runBuild,
       runCommand: () => runCommand,
+      runFocusedTests: () => runFocusedTests,
       runLint: () => runLint,
       runScript: () => runScript,
       runTests: () => runTests,
-      runValidationPipeline: () => runValidationPipeline
+      runValidationPipeline: () => runValidationPipeline,
+      usableFocusedResult: () => usableFocusedResult
     });
     module2.exports = __toCommonJS2(index_exports);
     var import_fs2 = __toESM2(require("fs"));
@@ -26366,6 +26569,17 @@ var require_dist = __commonJS({
         return [];
       }
     }
+    function readScriptText(cwd, name) {
+      try {
+        const pkgPath = import_path3.default.join(cwd, "package.json");
+        if (!import_fs2.default.existsSync(pkgPath)) return void 0;
+        const pkg = JSON.parse(import_fs2.default.readFileSync(pkgPath, "utf-8"));
+        const text = pkg?.scripts?.[name];
+        return typeof text === "string" ? text : void 0;
+      } catch {
+        return void 0;
+      }
+    }
     async function runScript(script, cwd, options) {
       if (!readScripts(cwd).includes(script)) {
         return { success: true, output: "", skipped: true };
@@ -26450,6 +26664,61 @@ var require_dist = __commonJS({
         console.warn(`[BugZero] No build, lint, or test scripts found in package.json \u2014 nothing to validate.`);
       }
       return { success: true, step: "none", output: "" };
+    }
+    var import_fs32 = __toESM2(require("fs"));
+    var import_shared2 = require_dist();
+    var MAX_FOCUSED_FILES = 10;
+    var ANSI_RE = /\u001b\[[0-9;]*[A-Za-z]/g;
+    var FAIL_LINE_RE = /^[ \t]*FAIL[ \t]+(?:\|[^|\n]*\|[ \t]+)?(\S+)/gm;
+    var TEST_FILE_RE = /\.(test|spec)\.[cm]?[jt]sx?$|(^|\/)__tests__\//;
+    var SAFE_PATH_RE = /^[A-Za-z0-9_@.+/-]+$/;
+    function detectTestRunner(script) {
+      if (typeof script !== "string" || script.trim() === "") return null;
+      if (/[&|;<>`$()]/.test(script)) return null;
+      const names = /* @__PURE__ */ new Set();
+      for (const token of script.trim().split(/\s+/)) {
+        const name = token.split(/[\\/]/).pop();
+        if (name === "vitest" || name === "jest") names.add(name);
+      }
+      return names.size === 1 ? [...names][0] : null;
+    }
+    function findFailingTestFiles(cwd, output) {
+      const text = output.replace(ANSI_RE, "").replace(/\r\n/g, "\n");
+      const files = [];
+      for (const match of text.matchAll(FAIL_LINE_RE)) {
+        const candidate = match[1].replace(/\\/g, "/").replace(/^\.\//, "");
+        if (files.includes(candidate)) continue;
+        if (!SAFE_PATH_RE.test(candidate) || candidate.startsWith("-") || candidate.split("/").includes("..")) continue;
+        if (!TEST_FILE_RE.test(candidate)) continue;
+        const resolved = (0, import_shared2.resolveInsideProject)(cwd, candidate);
+        if (!resolved.ok) continue;
+        try {
+          if (!import_fs32.default.statSync(resolved.absolutePath).isFile()) continue;
+        } catch {
+          continue;
+        }
+        files.push(candidate);
+      }
+      return files.length > MAX_FOCUSED_FILES ? [] : files;
+    }
+    function focusedCommand(manager, files) {
+      const args = files.map((file) => `"${file}"`).join(" ");
+      return manager === "npm" ? `npm run test -- ${args}` : `${manager} run test ${args}`;
+    }
+    function planFocusedTests(cwd, output) {
+      const runner = detectTestRunner(readScriptText(cwd, "test"));
+      if (runner === null) return null;
+      const files = findFailingTestFiles(cwd, output);
+      if (files.length === 0) return null;
+      return { runner, files, command: focusedCommand(detectPackageManager2(cwd), files) };
+    }
+    function runFocusedTests(plan, cwd, options) {
+      return runCommand(plan.command, cwd, options);
+    }
+    function usableFocusedResult(cwd, result) {
+      if (result.success) return false;
+      if (result.timedOut) return true;
+      return findFailingTestFiles(cwd, result.output).length > 0;
     }
   }
 });
@@ -32144,7 +32413,7 @@ var require_prompt_cache = __commonJS({
 });
 
 // ../../node_modules/.pnpm/langsmith@0.7.3/node_modules/langsmith/dist/index.cjs
-var require_dist2 = __commonJS({
+var require_dist3 = __commonJS({
   "../../node_modules/.pnpm/langsmith@0.7.3/node_modules/langsmith/dist/index.cjs"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -32204,7 +32473,7 @@ var require_env2 = __commonJS({
     exports2.getShas = getShas;
     exports2.getOtelEnabled = getOtelEnabled;
     exports2.resolveTracingMode = resolveTracingMode;
-    var index_js_1 = require_dist2();
+    var index_js_1 = require_dist3();
     var globalEnv;
     var isBrowser = () => typeof window !== "undefined" && typeof window.document !== "undefined";
     exports2.isBrowser = isBrowser;
@@ -33432,7 +33701,7 @@ var require_priority_queue = __commonJS({
 });
 
 // ../../node_modules/.pnpm/p-queue@6.6.2/node_modules/p-queue/dist/index.js
-var require_dist3 = __commonJS({
+var require_dist4 = __commonJS({
   "../../node_modules/.pnpm/p-queue@6.6.2/node_modules/p-queue/dist/index.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -33711,7 +33980,7 @@ var require_p_queue = __commonJS({
     };
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.PQueue = void 0;
-    var p_queue_1 = __importDefault(require_dist3());
+    var p_queue_1 = __importDefault(require_dist4());
     exports2.PQueue = "default" in p_queue_1.default ? p_queue_1.default.default : p_queue_1.default;
   }
 });
@@ -34993,7 +35262,7 @@ var require_client2 = __commonJS({
     var async_caller_js_1 = require_async_caller();
     var messages_js_1 = require_messages();
     var env_js_1 = require_env2();
-    var index_js_1 = require_dist2();
+    var index_js_1 = require_dist3();
     var _uuid_js_1 = require_uuid2();
     var warn_js_1 = require_warn();
     var prompts_js_1 = require_prompts();
@@ -41490,7 +41759,7 @@ var require_console = __commonJS({
 var require_langsmith = __commonJS({
   "../../node_modules/.pnpm/langsmith@0.7.3/node_modules/langsmith/index.cjs"(exports2, module2) {
     "use strict";
-    module2.exports = require_dist2();
+    module2.exports = require_dist3();
   }
 });
 
@@ -41747,7 +42016,7 @@ var require_callbacks = __commonJS({
     var require_runtime2 = require_runtime();
     var require_tracer2 = require_tracer();
     var require_globals2 = require_globals();
-    var p_queue = require_dist3();
+    var p_queue = require_dist4();
     p_queue = require_runtime2.__toESM(p_queue, 1);
     var queue;
     function createQueue() {
@@ -43612,7 +43881,7 @@ var require_import_constants = __commonJS({
 });
 
 // ../../node_modules/.pnpm/@langchain+core@1.1.48/node_modules/@langchain/core/dist/index.cjs
-var require_dist4 = __commonJS({
+var require_dist5 = __commonJS({
   "../../node_modules/.pnpm/@langchain+core@1.1.48/node_modules/@langchain/core/dist/index.cjs"(exports2) {
     "use strict";
     Object.defineProperty(exports2, Symbol.toStringTag, { value: "Module" });
@@ -45423,7 +45692,7 @@ var require_async_caller2 = __commonJS({
     var require_runtime2 = require_runtime();
     var require_signal2 = require_signal();
     var require_index = require_p_retry2();
-    var p_queue = require_dist3();
+    var p_queue = require_dist4();
     p_queue = require_runtime2.__toESM(p_queue, 1);
     var async_caller_exports = /* @__PURE__ */ require_runtime2.__exportAll({ AsyncCaller: () => AsyncCaller });
     var STATUS_NO_RETRY = [
@@ -84126,7 +84395,7 @@ var require_import_map = __commonJS({
   "../../node_modules/.pnpm/@langchain+core@1.1.48/node_modules/@langchain/core/dist/load/import_map.cjs"(exports2) {
     "use strict";
     var require_runtime2 = require_runtime();
-    var require_index = require_dist4();
+    var require_index = require_dist5();
     var require_agents2 = require_agents();
     var require_utils_hash = require_hash2();
     var require_errors_index = require_errors2();
@@ -85546,7 +85815,7 @@ var require_cache2 = __commonJS({
 });
 
 // ../../node_modules/.pnpm/@langchain+langgraph-checkpoint@1.0.3_@langchain+core@1.1.48/node_modules/@langchain/langgraph-checkpoint/dist/index.cjs
-var require_dist5 = __commonJS({
+var require_dist6 = __commonJS({
   "../../node_modules/.pnpm/@langchain+langgraph-checkpoint@1.0.3_@langchain+core@1.1.48/node_modules/@langchain/langgraph-checkpoint/dist/index.cjs"(exports2) {
     "use strict";
     Object.defineProperty(exports2, Symbol.toStringTag, { value: "Module" });
@@ -85593,7 +85862,7 @@ var require_base15 = __commonJS({
   "../../node_modules/.pnpm/@langchain+langgraph@1.3.2_@langchain+core@1.1.48_zod@4.4.3/node_modules/@langchain/langgraph/dist/channels/base.cjs"(exports2) {
     "use strict";
     var require_errors7 = require_errors3();
-    var _langchain_langgraph_checkpoint = require_dist5();
+    var _langchain_langgraph_checkpoint = require_dist6();
     function isBaseChannel(obj) {
       return obj != null && obj.lg_is_channel === true;
     }
@@ -88503,7 +88772,7 @@ var require_algo = __commonJS({
     var require_types10 = require_types7();
     var require_index = require_utils13();
     var require_call2 = require_call();
-    var _langchain_langgraph_checkpoint = require_dist5();
+    var _langchain_langgraph_checkpoint = require_dist6();
     var _langchain_core_runnables = require_runnables();
     var increment = (current) => {
       return current !== void 0 ? current + 1 : 1;
@@ -89553,7 +89822,7 @@ var require_loop = __commonJS({
     var require_algo2 = require_algo();
     var require_debug3 = require_debug();
     var require_stream6 = require_stream4();
-    var _langchain_langgraph_checkpoint = require_dist5();
+    var _langchain_langgraph_checkpoint = require_dist6();
     var INPUT_DONE = /* @__PURE__ */ Symbol.for("INPUT_DONE");
     var INPUT_RESUMING = /* @__PURE__ */ Symbol.for("INPUT_RESUMING");
     var DEFAULT_LOOP_LIMIT = 25;
@@ -90983,7 +91252,7 @@ var require_pregel = __commonJS({
     var require_validate5 = require_validate4();
     var require_topic2 = require_topic();
     var require_interrupt2 = require_interrupt();
-    var _langchain_langgraph_checkpoint = require_dist5();
+    var _langchain_langgraph_checkpoint = require_dist6();
     var _langchain_core_runnables = require_runnables();
     var _langchain_core_callbacks_manager = require_manager();
     function protocolEventsToEventStream(run2) {
@@ -94202,7 +94471,7 @@ var require_web = __commonJS({
     var require_index$3 = require_func();
     var require_messages_annotation2 = require_messages_annotation();
     var require_writer2 = require_writer();
-    var _langchain_langgraph_checkpoint = require_dist5();
+    var _langchain_langgraph_checkpoint = require_dist6();
     var _langchain_core_language_models_stream = require_stream2();
     exports2.Annotation = require_annotation2.Annotation;
     Object.defineProperty(exports2, "AsyncBatchedStore", {
@@ -94330,7 +94599,7 @@ var require_web = __commonJS({
 });
 
 // ../../node_modules/.pnpm/@langchain+langgraph@1.3.2_@langchain+core@1.1.48_zod@4.4.3/node_modules/@langchain/langgraph/dist/index.cjs
-var require_dist6 = __commonJS({
+var require_dist7 = __commonJS({
   "../../node_modules/.pnpm/@langchain+langgraph@1.3.2_@langchain+core@1.1.48_zod@4.4.3/node_modules/@langchain/langgraph/dist/index.cjs"(exports2) {
     "use strict";
     Object.defineProperty(exports2, Symbol.toStringTag, { value: "Module" });
@@ -94365,7 +94634,7 @@ var require_dist6 = __commonJS({
     var require_messages_annotation2 = require_messages_annotation();
     var require_writer2 = require_writer();
     require_web();
-    var _langchain_langgraph_checkpoint = require_dist5();
+    var _langchain_langgraph_checkpoint = require_dist6();
     var _langchain_core_language_models_stream = require_stream2();
     require_async_local_storage3.initializeAsyncLocalStorageSingleton();
     exports2.Annotation = require_annotation2.Annotation;
@@ -105860,7 +106129,7 @@ var require_agent2 = __commonJS({
 });
 
 // ../../node_modules/.pnpm/https-proxy-agent@5.0.1/node_modules/https-proxy-agent/dist/index.js
-var require_dist7 = __commonJS({
+var require_dist8 = __commonJS({
   "../../node_modules/.pnpm/https-proxy-agent@5.0.1/node_modules/https-proxy-agent/dist/index.js"(exports2, module2) {
     "use strict";
     var __importDefault = exports2 && exports2.__importDefault || function(mod) {
@@ -106418,7 +106687,7 @@ var require_axios = __commonJS({
     var FormData$1 = require_form_data();
     var crypto6 = require("crypto");
     var url = require("url");
-    var HttpsProxyAgent = require_dist7();
+    var HttpsProxyAgent = require_dist8();
     var http = require("http");
     var https = require("https");
     var http2 = require("http2");
@@ -110540,7 +110809,7 @@ var require_axios = __commonJS({
 });
 
 // ../../packages/ai-provider/dist/index.js
-var require_dist8 = __commonJS({
+var require_dist9 = __commonJS({
   "../../packages/ai-provider/dist/index.js"(exports2, module2) {
     "use strict";
     var __create2 = Object.create;
@@ -110685,203 +110954,6 @@ var require_dist8 = __commonJS({
   }
 });
 
-// ../../packages/shared/dist/index.js
-var require_dist9 = __commonJS({
-  "../../packages/shared/dist/index.js"(exports2, module2) {
-    "use strict";
-    var __create2 = Object.create;
-    var __defProp2 = Object.defineProperty;
-    var __getOwnPropDesc2 = Object.getOwnPropertyDescriptor;
-    var __getOwnPropNames2 = Object.getOwnPropertyNames;
-    var __getProtoOf2 = Object.getPrototypeOf;
-    var __hasOwnProp2 = Object.prototype.hasOwnProperty;
-    var __export2 = (target, all) => {
-      for (var name in all)
-        __defProp2(target, name, { get: all[name], enumerable: true });
-    };
-    var __copyProps2 = (to, from, except, desc) => {
-      if (from && typeof from === "object" || typeof from === "function") {
-        for (let key of __getOwnPropNames2(from))
-          if (!__hasOwnProp2.call(to, key) && key !== except)
-            __defProp2(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc2(from, key)) || desc.enumerable });
-      }
-      return to;
-    };
-    var __toESM2 = (mod, isNodeMode, target) => (target = mod != null ? __create2(__getProtoOf2(mod)) : {}, __copyProps2(
-      // If the importer is in node compatibility mode or this is not an ESM
-      // file that has been converted to a CommonJS file using a Babel-
-      // compatible transform (i.e. "__esModule" has not been set), then set
-      // "default" to the CommonJS "module.exports" for node compatibility.
-      isNodeMode || !mod || !mod.__esModule ? __defProp2(target, "default", { value: mod, enumerable: true }) : target,
-      mod
-    ));
-    var __toCommonJS2 = (mod) => __copyProps2(__defProp2({}, "__esModule", { value: true }), mod);
-    var index_exports = {};
-    __export2(index_exports, {
-      DEFAULT_PROTECTED_PATTERNS: () => DEFAULT_PROTECTED_PATTERNS,
-      DEFAULT_SECRET_PATTERNS: () => DEFAULT_SECRET_PATTERNS,
-      createProtectedPathRules: () => createProtectedPathRules,
-      isInsideDirectory: () => isInsideDirectory,
-      isLexicallyInside: () => isLexicallyInside,
-      projectRelativePaths: () => projectRelativePaths,
-      resolveInsideProject: () => resolveInsideProject,
-      uniqueFilePaths: () => uniqueFilePaths2
-    });
-    module2.exports = __toCommonJS2(index_exports);
-    function uniqueFilePaths2(patches) {
-      return [...new Set(patches.map((patch) => patch.filePath))];
-    }
-    var import_fs2 = __toESM2(require("fs"));
-    var import_path2 = __toESM2(require("path"));
-    function isLexicallyInside(root, target) {
-      const relative = import_path2.default.relative(import_path2.default.resolve(root), import_path2.default.resolve(target));
-      const escapes = relative === ".." || relative.startsWith(`..${import_path2.default.sep}`) || import_path2.default.isAbsolute(relative);
-      return !escapes;
-    }
-    function isInsideDirectory(root, target) {
-      const absoluteTarget = import_path2.default.resolve(target);
-      if (!isLexicallyInside(root, absoluteTarget)) return false;
-      try {
-        let probe = absoluteTarget;
-        while (!import_fs2.default.existsSync(probe)) {
-          const parent = import_path2.default.dirname(probe);
-          if (parent === probe) return false;
-          probe = parent;
-        }
-        return isLexicallyInside(import_fs2.default.realpathSync.native(root), import_fs2.default.realpathSync.native(probe));
-      } catch {
-        return false;
-      }
-    }
-    function resolveInsideProject(cwd, filePath) {
-      if (typeof filePath !== "string" || filePath.trim() === "") {
-        return { ok: false, error: "The file path is empty. Use a path relative to the project root." };
-      }
-      if (filePath.includes("\0")) {
-        return { ok: false, error: "The file path contains a null character." };
-      }
-      const absolutePath = import_path2.default.resolve(cwd, filePath);
-      if (import_path2.default.resolve(cwd) === absolutePath) {
-        return { ok: false, error: `"${filePath}" is the project directory itself, not a file.` };
-      }
-      if (!isInsideDirectory(cwd, absolutePath)) {
-        return {
-          ok: false,
-          error: `"${filePath}" is outside the project directory. Use a path relative to the project root.`
-        };
-      }
-      return { ok: true, absolutePath };
-    }
-    var import_fs22 = __toESM2(require("fs"));
-    var import_path22 = __toESM2(require("path"));
-    var DEFAULT_SECRET_PATTERNS = [".env", ".env.*", "*.pem", "*.key"];
-    var DEFAULT_PROTECTED_PATTERNS = [
-      ...DEFAULT_SECRET_PATTERNS,
-      ".git/",
-      ".github/workflows/",
-      ".gitlab-ci.yml",
-      ".circleci/",
-      "azure-pipelines.yml",
-      "bitbucket-pipelines.yml",
-      "Jenkinsfile",
-      "package-lock.json",
-      "pnpm-lock.yaml",
-      "yarn.lock",
-      "bun.lockb",
-      "node_modules/",
-      "*.opspilot.bak",
-      "*.opspilot.bak.sha"
-    ];
-    function normalizePath(relPath) {
-      return relPath.replace(/\\/g, "/").replace(/^(\.\/)+/, "").replace(/^\/+/, "").toLowerCase();
-    }
-    function compilePattern(pattern) {
-      if (typeof pattern !== "string") return void 0;
-      let p = pattern.trim().replace(/\\/g, "/").toLowerCase();
-      if (p === "" || p.startsWith("#")) return void 0;
-      const anchored = p.startsWith("/") || p.replace(/\/+$/, "").includes("/");
-      p = p.replace(/^(\.\/)+/, "").replace(/^\/+/, "").replace(/\/+$/, "");
-      if (p === "") return void 0;
-      let source = "";
-      for (let i = 0; i < p.length; i++) {
-        const c = p[i];
-        if (c === "*") {
-          if (p[i + 1] === "*") {
-            i++;
-            if (p[i + 1] === "/") {
-              i++;
-              source += "(?:.*/)?";
-            } else {
-              source += ".*";
-            }
-          } else {
-            source += "[^/]*";
-          }
-        } else if (c === "?") {
-          source += "[^/]";
-        } else {
-          source += c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-        }
-      }
-      const regex = new RegExp(`^${anchored ? "" : "(?:.*/)?"}${source}(?:/.*)?$`);
-      return { pattern: pattern.trim(), test: (normalizedPath) => regex.test(normalizedPath) };
-    }
-    function compileAll(patterns) {
-      return (patterns ?? []).map(compilePattern).filter((m) => m !== void 0);
-    }
-    function firstMatch(matchers, normalizedPath) {
-      return matchers.find((m) => m.test(normalizedPath));
-    }
-    function createProtectedPathRules(settings = {}) {
-      const defaults = compileAll(DEFAULT_PROTECTED_PATTERNS);
-      const secrets = compileAll(DEFAULT_SECRET_PATTERNS);
-      const extra = compileAll(settings.protect);
-      const allowed = compileAll(settings.allow);
-      return {
-        editBlockedBy(relPath) {
-          const normalized = normalizePath(relPath);
-          const own = firstMatch(extra, normalized);
-          if (own) return own.pattern;
-          if (firstMatch(allowed, normalized)) return void 0;
-          return firstMatch(defaults, normalized)?.pattern;
-        },
-        secretBlockedBy(relPath) {
-          const normalized = normalizePath(relPath);
-          if (firstMatch(allowed, normalized)) return void 0;
-          return firstMatch(secrets, normalized)?.pattern;
-        }
-      };
-    }
-    function toRelative(root, target) {
-      return import_path22.default.relative(root, target).split(import_path22.default.sep).join("/");
-    }
-    function realPathAllowingMissing(target) {
-      let current = import_path22.default.resolve(target);
-      const rest = [];
-      while (true) {
-        try {
-          return import_path22.default.join(import_fs22.default.realpathSync.native(current), ...rest.reverse());
-        } catch {
-          const parent = import_path22.default.dirname(current);
-          if (parent === current) return void 0;
-          rest.push(import_path22.default.basename(current));
-          current = parent;
-        }
-      }
-    }
-    function projectRelativePaths(cwd, absolutePath) {
-      const paths = [toRelative(import_path22.default.resolve(cwd), import_path22.default.resolve(absolutePath))];
-      const realRoot = realPathAllowingMissing(cwd);
-      const realTarget = realPathAllowingMissing(absolutePath);
-      if (realRoot && realTarget) {
-        const real = toRelative(realRoot, realTarget);
-        if (real !== paths[0] && !real.startsWith("..")) paths.push(real);
-      }
-      return paths;
-    }
-  }
-});
-
 // ../../packages/prompts/dist/index.js
 var require_dist10 = __commonJS({
   "../../packages/prompts/dist/index.js"(exports2, module2) {
@@ -110919,7 +110991,7 @@ var require_dist10 = __commonJS({
       truncateLogs: () => truncateLogs
     });
     module2.exports = __toCommonJS2(index_exports);
-    var import_shared2 = require_dist9();
+    var import_shared2 = require_dist();
     var import_fs2 = __toESM2(require("fs"));
     var import_path2 = __toESM2(require("path"));
     var MAX_LOG_CHARS = 2e4;
@@ -111789,7 +111861,7 @@ var require_dist12 = __commonJS({
         }
       }
     }
-    var import_shared2 = require_dist9();
+    var import_shared2 = require_dist();
     function resolvePatchTargets(cwd, patches, protection = (0, import_shared2.createProtectedPathRules)()) {
       const absolutePaths = [];
       for (const patch of patches) {
@@ -111880,7 +111952,7 @@ var require_dist12 = __commonJS({
       }
       return { success: true, applied };
     }
-    var import_shared22 = require_dist9();
+    var import_shared22 = require_dist();
     var import_fs4 = __toESM2(require("fs"));
     var import_path22 = __toESM2(require("path"));
     var DEFAULT_CONTEXT = 3;
@@ -112078,7 +112150,7 @@ var require_dist12 = __commonJS({
       }));
       return { success: true, changes };
     }
-    var import_shared3 = require_dist9();
+    var import_shared3 = require_dist();
     var import_fs6 = __toESM2(require("fs"));
     var import_path4 = __toESM2(require("path"));
     var BACKUP_SUFFIX = ".opspilot.bak";
@@ -112198,8 +112270,8 @@ var require_dist13 = __commonJS({
       workflow: () => workflow
     });
     module2.exports = __toCommonJS2(index_exports);
-    var import_langgraph2 = require_dist6();
-    var import_langgraph = require_dist6();
+    var import_langgraph2 = require_dist7();
+    var import_langgraph = require_dist7();
     var GraphState = import_langgraph.Annotation.Root({
       /** Absolute path to the project being fixed */
       cwd: (0, import_langgraph.Annotation)({
@@ -112303,6 +112375,11 @@ var require_dist13 = __commonJS({
         reducer: (_, value) => value,
         default: () => null
       }),
+      /** Whether, while tests are what is failing, verification may re-run only the failing test files first */
+      focusTests: (0, import_langgraph.Annotation)({
+        reducer: (_, value) => value,
+        default: () => true
+      }),
       /** True when the run stopped before max attempts because attempts were not making progress */
       stoppedForNoProgress: (0, import_langgraph.Annotation)({
         reducer: (_, value) => value,
@@ -112314,12 +112391,12 @@ var require_dist13 = __commonJS({
         default: () => void 0
       })
     });
-    var import_ai_provider = require_dist8();
+    var import_ai_provider = require_dist9();
     var import_prompts = require_dist10();
     var import_config = require_dist11();
     var import_patcher = require_dist12();
-    var import_analyzers2 = require_dist();
-    var import_analyzers = require_dist();
+    var import_analyzers2 = require_dist2();
+    var import_analyzers = require_dist2();
     var STEP_ORDER = { build: 0, lint: 1, test: 2, none: 3 };
     var ANSI_RE = /\u001b\[[0-9;]*[A-Za-z]/g;
     function snapshotOf(step, output) {
@@ -112354,7 +112431,7 @@ var require_dist13 = __commonJS({
       if (snapshot.errorCount === null) return `output it cannot count${where}`;
       return `${snapshot.errorCount} error${snapshot.errorCount === 1 ? "" : "s"}${where}`;
     }
-    var import_shared2 = require_dist9();
+    var import_shared2 = require_dist();
     var provider = new import_ai_provider.OpenRouterProvider();
     function protectionFor(cwd) {
       return (0, import_shared2.createProtectedPathRules)((0, import_config.getProtectionSettings)(cwd));
@@ -112457,6 +112534,25 @@ Any other files from that same suggestion were rolled back to keep the change at
         patchFailed: false
       };
     }
+    async function validate2(state) {
+      const options = { timeoutMs: state.timeoutMs };
+      if (state.focusTests !== false && state.progress?.last.step === "test") {
+        const plan = (0, import_analyzers2.planFocusedTests)(state.cwd, state.logs);
+        if (plan) {
+          console.log(
+            `[BugZero] Re-running only the failing test file${plan.files.length === 1 ? "" : "s"}: ${plan.files.join(", ")} (the full pipeline runs once they pass)\u2026`
+          );
+          const focused = await (0, import_analyzers2.runFocusedTests)(plan, state.cwd, options);
+          if ((0, import_analyzers2.usableFocusedResult)(state.cwd, focused)) {
+            return { success: false, step: "test", output: focused.output };
+          }
+          console.log(
+            focused.success ? "[BugZero] Those tests pass now \u2014 running the full pipeline to confirm\u2026" : "[BugZero] The focused run did not report any failing test file, so it is not trusted \u2014 running the full pipeline instead\u2026"
+          );
+        }
+      }
+      return (0, import_analyzers2.runValidationPipeline)(state.cwd, options);
+    }
     async function verifyNode(state) {
       if (state.patchFailed) {
         console.log("[BugZero] Skipping validation pipeline because the patch failed to apply.");
@@ -112466,7 +112562,7 @@ Any other files from that same suggestion were rolled back to keep the change at
         };
       }
       console.log("[BugZero] Re-running validation pipeline to verify fix\u2026");
-      const result = await (0, import_analyzers2.runValidationPipeline)(state.cwd, { timeoutMs: state.timeoutMs });
+      const result = await validate2(state);
       if (result.success) {
         console.log("[BugZero] \u2705 Validation succeeded!");
       } else {
@@ -112549,6 +112645,7 @@ var require_dist14 = __commonJS({
       detectPackageManager: () => import_analyzers2.detectPackageManager,
       orchestrate: () => orchestrate,
       orchestrateAndFix: () => orchestrateAndFix2,
+      resolveFocusTests: () => resolveFocusTests,
       resolveMaxAttempts: () => resolveMaxAttempts,
       resolvePatience: () => resolvePatience,
       resolveTimeoutMs: () => resolveTimeoutMs
@@ -112581,14 +112678,14 @@ var require_dist14 = __commonJS({
       if (has("tsconfig.json")) return "typescript";
       return "unknown";
     }
-    var import_analyzers = require_dist();
+    var import_analyzers = require_dist2();
     var import_agents = require_dist13();
-    var import_shared2 = require_dist9();
+    var import_shared2 = require_dist();
     var import_fs3 = __toESM2(require("fs"));
     var import_path3 = __toESM2(require("path"));
     var import_url = require("url");
     var import_prompts = require_dist10();
-    var import_shared3 = require_dist9();
+    var import_shared3 = require_dist();
     var MAX_REPORT_LOG_CHARS = 2e4;
     function capReportLogs(logs, maxChars = MAX_REPORT_LOG_CHARS) {
       return (0, import_prompts.truncateLogs)(logs, maxChars);
@@ -112714,6 +112811,14 @@ Re-run without \`--dry-run\` to let BugZero attempt a fix.
       }
       return attempts;
     }
+    function resolveFocusTests(flag, configured) {
+      if (flag !== void 0) return flag;
+      if (configured === void 0) return true;
+      if (typeof configured !== "boolean") {
+        throw new Error(`focusTests in .bugzerorc must be true or false (received ${JSON.stringify(configured)}).`);
+      }
+      return configured;
+    }
     var DEFAULT_PATIENCE = 2;
     function resolvePatience(flag, configured) {
       const source = flag !== void 0 ? "--patience" : "patience in .bugzerorc";
@@ -112731,7 +112836,7 @@ Re-run without \`--dry-run\` to let BugZero attempt a fix.
         throw new Error(`No package.json found in ${cwd}. Point --path at a Node.js project.`);
       }
     }
-    var import_ai_provider = require_dist8();
+    var import_ai_provider = require_dist9();
     var REPORT_FILENAME = "bugzero-report.md";
     function failureMessage(maxAttempts, declined, appliedAnything, stoppedAfter) {
       const plural = declined === 1 ? "fix" : "fixes";
@@ -112768,7 +112873,9 @@ Re-run without \`--dry-run\` to let BugZero attempt a fix.
       assertNodeProject(cwd);
       const maxAttempts = resolveMaxAttempts(options.maxAttempts);
       const timeoutMs = resolveTimeoutMs(options.timeoutSeconds);
-      const patience = resolvePatience(options.patience, (0, import_config.getLocalConfig)(cwd).patience);
+      const config = (0, import_config.getLocalConfig)(cwd);
+      const patience = resolvePatience(options.patience, config.patience);
+      const focusTests = resolveFocusTests(options.focusTests, config.focusTests);
       console.log(`[BugZero] Running validation pipeline in: ${cwd}`);
       const pipelineResult = await (0, import_analyzers.runValidationPipeline)(cwd, { timeoutMs });
       if (pipelineResult.success) {
@@ -112821,6 +112928,7 @@ Re-run without \`--dry-run\` to let BugZero attempt a fix.
         timeoutMs,
         approve: options.approve,
         patience,
+        focusTests,
         initialStep: pipelineResult.step
       });
       const result = {
@@ -113062,7 +113170,7 @@ ${rawOutput}
         console.log("\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500");
       }
     }
-    var import_analyzers2 = require_dist();
+    var import_analyzers2 = require_dist2();
   }
 });
 
@@ -113074,7 +113182,7 @@ var github = __toESM(require_github());
 var import_fs = __toESM(require("fs"));
 var import_path = __toESM(require("path"));
 var import_core2 = __toESM(require_dist14());
-var import_shared = __toESM(require_dist9());
+var import_shared = __toESM(require_dist());
 
 // src/open-pull-request.ts
 async function openFixPullRequest(options) {

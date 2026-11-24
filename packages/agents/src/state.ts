@@ -108,6 +108,11 @@ export const GraphState = Annotation.Root({
     reducer: (_, value) => value,
     default: () => null,
   }),
+  /** Whether, while tests are what is failing, verification may re-run only the failing test files first */
+  focusTests: Annotation<boolean>({
+    reducer: (_, value) => value,
+    default: () => true,
+  }),
   /** True when the run stopped before max attempts because attempts were not making progress */
   stoppedForNoProgress: Annotation<boolean>({
     reducer: (_, value) => value,
