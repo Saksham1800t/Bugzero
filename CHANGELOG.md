@@ -9,6 +9,8 @@ Entries for releases before 0.0.45 are not written up yet; see the
 
 ## [Unreleased]
 
+## [0.0.59] - 2026-11-24
+
 ### Added
 
 - **`rescue` stops early when attempts are not making progress.** After each attempt it compares what is
