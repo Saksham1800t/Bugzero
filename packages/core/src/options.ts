@@ -40,6 +40,21 @@ export function resolveFocusTests(flag: boolean | undefined, configured: unknown
   return configured;
 }
 
+/**
+ * The token budget for a run: the `--max-tokens` flag if given, else `maxTokens` from `.bugzerorc`, else no
+ * limit. 0 also means no limit, so the flag can lift one set in the file. A value that is not a whole number of 0
+ * or more is rejected, naming where it came from.
+ */
+export function resolveMaxTokens(flag: number | undefined, configured: unknown): number | undefined {
+  const source = flag !== undefined ? "--max-tokens" : "maxTokens in .bugzerorc";
+  const value = flag !== undefined ? flag : configured;
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw new Error(`${source} must be a whole number of 0 or more, where 0 means no limit (received ${JSON.stringify(value) ?? String(value)}).`);
+  }
+  return value === 0 ? undefined : value;
+}
+
 /** How many attempts in a row may make no progress before a run stops early, unless set otherwise. */
 export const DEFAULT_PATIENCE = 2;
 

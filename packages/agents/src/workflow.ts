@@ -12,7 +12,13 @@ import {
   type PipelineResult,
 } from "@opspilot/analyzers";
 import { describeSnapshot, recordAttempt, snapshotOf, startTracking, type PipelineStep } from "./progress";
-import { createProtectedPathRules, type AIFixSuggestion, type ApprovalHandler } from "@opspilot/shared";
+import {
+  checkBudget,
+  countCallTokens,
+  createProtectedPathRules,
+  type AIFixSuggestion,
+  type ApprovalHandler,
+} from "@opspilot/shared";
 
 const provider = new OpenRouterProvider();
 
@@ -31,13 +37,28 @@ export function previewAnalysisPrompt(cwd: string, logs: string): string {
 
 // ── Node: call the AI and parse its JSON response ──────────────────────────
 async function analyzeNode(state: typeof GraphState.State) {
+  const prompt = previewAnalysisPrompt(state.cwd, state.logs);
+  const used = state.promptTokens + state.completionTokens;
+  const budget = checkBudget(state.maxTokens, used, prompt);
+  if (!budget.allowed) {
+    console.log(`\n[BugZero] ${budget.reason} Stopping before attempt ${state.attempts + 1}.`);
+    return { budgetStop: budget.reason };
+  }
+
   console.log(
     `\n[BugZero] Attempt ${state.attempts + 1}/${state.maxAttempts} — asking AI…`
   );
 
-  const prompt = previewAnalysisPrompt(state.cwd, state.logs);
-  const result = await provider.invoke(prompt, { cwd: state.cwd });
+  const result = await provider.invoke(prompt, { cwd: state.cwd, maxTokens: budget.maxReplyTokens });
   const response = result.content;
+
+  const tokens = countCallTokens(state.maxTokens, prompt, result);
+  if (state.maxTokens !== undefined) {
+    const total = used + tokens.promptTokens + tokens.completionTokens;
+    const note = tokens.estimated ? " (an estimate: the model did not report its token usage)" : "";
+    console.log(`[BugZero] Token budget: ${total} of ${state.maxTokens} used${note}.`);
+    if (result.truncated) console.log("[BugZero] The AI reply was cut off by its length limit, so it may be unusable.");
+  }
 
   let fixSuggestion: AIFixSuggestion | null = null;
   try {
@@ -65,8 +86,9 @@ async function analyzeNode(state: typeof GraphState.State) {
     fixSuggestion,
     attempts: state.attempts + 1,
     modelUsed: result.model,
-    promptTokens: result.usage?.prompt_tokens ?? 0,
-    completionTokens: result.usage?.completion_tokens ?? 0,
+    promptTokens: tokens.promptTokens,
+    completionTokens: tokens.completionTokens,
+    tokensEstimated: tokens.estimated,
   };
 }
 
@@ -215,13 +237,19 @@ function shouldRetry(state: typeof GraphState.State) {
   return "analyze" as const;
 }
 
+/** Nothing to apply or verify when the token budget stopped the request from being made. */
+function afterAnalyze(state: typeof GraphState.State) {
+  return state.budgetStop ? END : ("apply_fix" as const);
+}
+
 // ── Graph assembly — chain calls so TS generics track node names ───────────
 export const workflow = new StateGraph(GraphState)
   .addNode("analyze", analyzeNode)
   .addNode("apply_fix", applyFixNode)
   .addNode("verify", verifyNode)
   .addEdge(START, "analyze")
-  .addEdge("analyze", "apply_fix")
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  .addConditionalEdges("analyze", afterAnalyze as any)
   .addEdge("apply_fix", "verify")
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   .addConditionalEdges("verify", shouldRetry as any)
@@ -245,6 +273,8 @@ export interface RepairInput {
    * pipeline once they pass. Defaults to true; false always runs the full pipeline.
    */
   focusTests?: boolean;
+  /** The most AI tokens the attempts may use between them (default: no limit) */
+  maxTokens?: number;
   /** Which step the starting failure came from; lets the very first attempt be compared with it */
   initialStep?: PipelineStep;
 }

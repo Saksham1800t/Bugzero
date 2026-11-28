@@ -54,8 +54,21 @@ export interface FixResult {
   promptPreview?: string;
   /** How many proposed fixes the person declined (only set when approval was requested and some were declined) */
   declinedFixes?: number;
-  /** Set when the run stopped before using all its attempts because they were not making progress */
-  stoppedEarly?: "no-progress";
+  /**
+   * Set when the run stopped before using all its attempts: they were not making progress, or the token budget
+   * did not leave enough for another request
+   */
+  stoppedEarly?: "no-progress" | "token-budget";
+  /** Only set when a token budget was given and the run got far enough to use it */
+  tokenBudget?: TokenBudgetUse;
+}
+
+/** How much of a run's token budget was used, by the fix attempts and the report together */
+export interface TokenBudgetUse {
+  limit: number;
+  used: number;
+  /** True when part of `used` is an estimate because the model did not report it */
+  estimated: boolean;
 }
 
 /** What a person is shown before a proposed fix is written (see `rescue --approve`). */

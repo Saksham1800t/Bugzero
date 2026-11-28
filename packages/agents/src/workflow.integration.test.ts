@@ -5,18 +5,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Only the model is faked. The patcher, the validation pipeline (a real `npm run build`),
 // and the filesystem are all real, so this checks what actually ends up on disk and in appliedFix.
-const { scriptedReplies, receivedPrompts } = vi.hoisted(() => ({
+const { scriptedReplies, receivedPrompts, receivedOptions, modelReports } = vi.hoisted(() => ({
   scriptedReplies: [] as string[],
   receivedPrompts: [] as string[],
+  receivedOptions: [] as { maxTokens?: number }[],
+  // What the fake model says about each reply, besides its text. Tests change it to report other token counts.
+  modelReports: { extra: {} as Record<string, unknown> },
 }));
 
 vi.mock("@opspilot/ai-provider", () => ({
   OpenRouterProvider: class {
-    async invoke(prompt: string) {
+    async invoke(prompt: string, options: { maxTokens?: number } = {}) {
       receivedPrompts.push(prompt);
+      receivedOptions.push(options);
       const content = scriptedReplies.shift();
       if (content === undefined) throw new Error("The fake model was asked for more replies than were scripted.");
-      return { content, model: "fake-model", usage: { prompt_tokens: 1, completion_tokens: 1 } };
+      return { content, model: "fake-model", usage: { prompt_tokens: 1, completion_tokens: 1 }, ...modelReports.extra };
     }
   },
 }));
@@ -42,6 +46,8 @@ describe("repair workflow end to end (fake model, real patcher and pipeline)", (
     vi.spyOn(console, "error").mockImplementation(() => {});
     scriptedReplies.length = 0;
     receivedPrompts.length = 0;
+    receivedOptions.length = 0;
+    modelReports.extra = {};
 
     projectDir = fs.mkdtempSync(path.join(os.tmpdir(), "bugzero-workflow-int-"));
     // The build only passes once BOTH files have been fixed.
@@ -264,6 +270,86 @@ describe("repair workflow end to end (fake model, real patcher and pipeline)", (
 
       expect(state.success).toBe(true);
       expect(state.attempts).toBe(3);
+    });
+  });
+
+  describe("working within a token budget", () => {
+    const spending = (prompt: number, completion: number) => ({
+      usage: { prompt_tokens: prompt, completion_tokens: completion, total_tokens: prompt + completion },
+    });
+    const run = (maxTokens: number | undefined) =>
+      runRepairWorkflow({ cwd: projectDir, logs: "error: a.txt is still broken", maxAttempts: 3, maxTokens });
+    const onDisk = (name: string) => fs.readFileSync(path.join(projectDir, name), "utf8");
+
+    it("stops before a request the budget has no room for, keeping what was already fixed", async () => {
+      modelReports.extra = spending(9000, 800);
+      scriptedReplies.push(reply("a.txt", "a"), reply("b.txt", "b"));
+
+      const state = await run(10_000);
+
+      expect(state.success).toBe(false);
+      expect(state.attempts).toBe(1);
+      expect(receivedPrompts).toHaveLength(1);
+      expect(state.budgetStop).toContain("token budget of 10000");
+      expect(state.budgetStop).toContain("9800 already used");
+      expect(onDisk("a.txt")).toBe("state: FIXED\n");
+      expect(onDisk("b.txt")).toBe("state: broken\n");
+    });
+
+    it("limits each reply to what is left of the budget after the prompt", async () => {
+      modelReports.extra = spending(1000, 200);
+      scriptedReplies.push(reply("a.txt", "a"), reply("b.txt", "b"));
+
+      const state = await run(6000);
+
+      expect(state.success).toBe(true);
+      const estimate = (prompt: string) => Math.ceil(prompt.length / 4);
+      expect(receivedOptions[0].maxTokens).toBe(6000 - estimate(receivedPrompts[0]));
+      expect(receivedOptions[1].maxTokens).toBe(6000 - 1200 - estimate(receivedPrompts[1]));
+      expect(state.budgetStop).toBeNull();
+    });
+
+    it("makes no request at all when the budget cannot cover even the first one", async () => {
+      scriptedReplies.push(reply("a.txt", "a"));
+
+      const state = await run(100);
+
+      expect(state.attempts).toBe(0);
+      expect(receivedPrompts).toHaveLength(0);
+      expect(state.budgetStop).toContain("token budget of 100");
+      expect(onDisk("a.txt")).toBe("state: broken\n");
+    });
+
+    it("sets no reply limit and never stops when there is no budget", async () => {
+      modelReports.extra = spending(10_000_000, 10_000_000);
+      scriptedReplies.push(reply("a.txt", "a"), reply("b.txt", "b"));
+
+      const state = await run(undefined);
+
+      expect(state.success).toBe(true);
+      expect(receivedOptions.map((o) => o.maxTokens)).toEqual([undefined, undefined]);
+    });
+
+    it("estimates a request the model does not report, says so, and still enforces the budget", async () => {
+      modelReports.extra = { usage: undefined };
+      scriptedReplies.push(reply("a.txt", "a"), reply("b.txt", "b"));
+
+      const state = await run(50_000);
+
+      expect(state.success).toBe(true);
+      expect(state.tokensEstimated).toBe(true);
+      expect(state.promptTokens).toBe(receivedPrompts.reduce((sum, p) => sum + Math.ceil(p.length / 4), 0));
+      expect(state.completionTokens).toBeGreaterThan(0);
+      expect(vi.mocked(console.log).mock.calls.flat().join(" ")).toContain("an estimate");
+    });
+
+    it("says when a reply was cut off by the budget", async () => {
+      modelReports.extra = { truncated: true };
+      scriptedReplies.push('{"rootCause": "cut', reply("a.txt", "a"), reply("b.txt", "b"));
+
+      await runRepairWorkflow({ cwd: projectDir, logs: "error", maxAttempts: 1, maxTokens: 5000 });
+
+      expect(vi.mocked(console.log).mock.calls.flat().join(" ")).toContain("cut off");
     });
   });
 

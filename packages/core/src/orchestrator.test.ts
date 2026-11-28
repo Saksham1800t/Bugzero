@@ -375,6 +375,154 @@ describe("rescue with an approval handler", () => {
   });
 });
 
+describe("rescue with a token budget", () => {
+  let projectDir: string;
+
+  const fix = { rootCause: "cause", explanation: "why", patches: [{ filePath: "a.ts", search: "x", replace: "y" }] };
+  const loopResult = (overrides: Record<string, unknown> = {}) => ({
+    success: true,
+    attempts: 1,
+    logs: "",
+    appliedFix: fix,
+    declinedFixes: 0,
+    promptTokens: 3000,
+    completionTokens: 1000,
+    modelUsed: "m",
+    ...overrides,
+  });
+  const reply = (extra: Record<string, unknown> = {}) => ({
+    content: "# AI report",
+    model: "m",
+    usage: { prompt_tokens: 500, completion_tokens: 200, total_tokens: 700 },
+    ...extra,
+  });
+  const report = () => fs.readFileSync(path.join(projectDir, REPORT_FILENAME), "utf8");
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    projectDir = fs.mkdtempSync(path.join(os.tmpdir(), "bugzero-budget-test-"));
+    fs.writeFileSync(path.join(projectDir, "package.json"), JSON.stringify({ name: "demo" }));
+    mockRunValidationPipeline.mockResolvedValue({ success: false, step: "build", output: "build broke" });
+    mockInvoke.mockResolvedValue(reply());
+    mockRunRepairWorkflow.mockResolvedValue(loopResult());
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    fs.rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  it("has no limit by default, and the report says nothing about a budget", async () => {
+    const result = await orchestrateAndFix({ cwd: projectDir });
+
+    expect(mockRunRepairWorkflow.mock.calls[0][0].maxTokens).toBeUndefined();
+    expect(mockInvoke.mock.calls[0][1].maxTokens).toBeUndefined();
+    expect(result.tokenBudget).toBeUndefined();
+    expect(report()).not.toContain("Token budget");
+  });
+
+  it("gives the repair loop the budget from .bugzerorc, which the option beats", async () => {
+    fs.writeFileSync(path.join(projectDir, ".bugzerorc"), JSON.stringify({ maxTokens: 40_000 }));
+
+    await orchestrateAndFix({ cwd: projectDir });
+    await orchestrateAndFix({ cwd: projectDir, maxTokens: 90_000 });
+    await orchestrateAndFix({ cwd: projectDir, maxTokens: 0 });
+
+    expect(mockRunRepairWorkflow.mock.calls.map((call) => call[0].maxTokens)).toEqual([40_000, 90_000, undefined]);
+  });
+
+  it("rejects a bad maxTokens in .bugzerorc before running anything", async () => {
+    fs.writeFileSync(path.join(projectDir, ".bugzerorc"), JSON.stringify({ maxTokens: "lots" }));
+
+    await expect(orchestrateAndFix({ cwd: projectDir })).rejects.toThrow("maxTokens in .bugzerorc must be a whole number");
+    expect(mockRunValidationPipeline).not.toHaveBeenCalled();
+  });
+
+  it("limits the report request to what is left, and counts it in the total", async () => {
+    const result = await orchestrateAndFix({ cwd: projectDir, maxTokens: 10_000 });
+
+    const [prompt, options] = mockInvoke.mock.calls[0];
+    expect(options.maxTokens).toBe(10_000 - 4000 - Math.ceil(prompt.length / 4));
+    expect(result.tokenBudget).toEqual({ limit: 10_000, used: 4700, estimated: false });
+    // The fix attempts' own numbers stay what they were
+    expect(result.promptTokens).toBe(3000);
+    expect(result.completionTokens).toBe(1000);
+    expect(report()).toContain("# AI report");
+    expect(report()).toContain("4700 of 10000 tokens used");
+  });
+
+  it.each([
+    ["a fix that worked", {}, "Fixed successfully"],
+    ["a repair that failed", { success: false, appliedFix: null, logs: "still broke" }, "Could not repair"],
+  ])("writes the report itself, without the AI, when there is no room left after %s", async (_name, overrides, status) => {
+    mockRunRepairWorkflow.mockResolvedValue(loopResult({ promptTokens: 9000, completionTokens: 900, ...overrides }));
+
+    const result = await orchestrateAndFix({ cwd: projectDir, maxTokens: 10_000 });
+
+    expect(mockInvoke).not.toHaveBeenCalled();
+    expect(report()).toContain(status);
+    expect(report()).toContain("The AI did not write this report");
+    expect(report()).toContain("token budget of 10000");
+    expect(report()).toContain("9900 of 10000 tokens used");
+    expect(result.tokenBudget?.used).toBe(9900);
+  });
+
+  it("explains a run stopped by the budget", async () => {
+    mockRunRepairWorkflow.mockResolvedValue(
+      loopResult({
+        success: false,
+        appliedFix: null,
+        logs: "still broke",
+        budgetStop: "The token budget of 10000 does not leave enough for the next AI request.",
+      })
+    );
+
+    const result = await orchestrateAndFix({ cwd: projectDir, maxTokens: 10_000, maxAttempts: 5 });
+
+    expect(result.stoppedEarly).toBe("token-budget");
+    expect(result.error).toContain("Stopped: The token budget of 10000");
+    expect(result.error).toContain("--max-tokens");
+    expect(result.error).not.toContain("Max attempts");
+  });
+
+  it("marks the total as including estimates when the loop or the report had to estimate", async () => {
+    mockInvoke.mockResolvedValue(reply({ usage: undefined }));
+
+    const result = await orchestrateAndFix({ cwd: projectDir, maxTokens: 20_000 });
+
+    expect(result.tokenBudget?.estimated).toBe(true);
+    expect(result.tokenBudget?.used).toBeGreaterThan(4000);
+    expect(report()).toContain("includes estimates");
+  });
+
+  it("notes a report that was cut off, and writes its own when the reply came back empty", async () => {
+    mockInvoke.mockResolvedValue(reply({ content: "# Half a repo", truncated: true }));
+    await orchestrateAndFix({ cwd: projectDir, maxTokens: 10_000 });
+    expect(report()).toContain("# Half a repo");
+    expect(report()).toContain("cut off");
+
+    mockInvoke.mockResolvedValue(reply({ content: "", truncated: true }));
+    const result = await orchestrateAndFix({ cwd: projectDir, maxTokens: 10_000 });
+    expect(report()).toContain("Fixed successfully");
+    expect(report()).toContain("empty reply");
+    expect(result.tokenBudget?.used).toBe(4700);
+  });
+
+  it("applies the budget to a dry run's one request", async () => {
+    const allowed = await orchestrateAndFix({ cwd: projectDir, dryRun: true, maxTokens: 10_000 });
+    expect(mockInvoke.mock.calls[0][1].maxTokens).toBeGreaterThan(0);
+    expect(allowed.tokenBudget).toEqual({ limit: 10_000, used: 700, estimated: false });
+
+    mockInvoke.mockClear();
+    const refused = await orchestrateAndFix({ cwd: projectDir, dryRun: true, maxTokens: 100 });
+    expect(mockInvoke).not.toHaveBeenCalled();
+    expect(refused.tokenBudget).toEqual({ limit: 100, used: 0, estimated: false });
+    expect(report()).toContain("token budget of 100");
+    expect(report()).toContain("build broke");
+  });
+});
+
 describe("rescue stopping early when attempts make no progress", () => {
   let projectDir: string;
 

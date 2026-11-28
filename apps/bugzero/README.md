@@ -230,6 +230,8 @@ The whole proposed fix is shown at once, because a fix that spans several files 
 
 **Failing tests are re-run on their own first.** While tests are what is failing, BugZero re-runs only the test files that failed after each attempt, which is much quicker than the whole pipeline on a big project. Once those files pass it runs the full build, lint and tests, so a fix is never called done on a partial check. This works for projects whose `test` script runs Jest or Vitest as one plain command (for example `vitest run` or `jest --ci`); for any other script, or when no failing test file can be found in the output, the full pipeline runs as before. Turn it off with `--no-focus-tests` or `"focusTests": false` in `.bugzerorc`.
 
+**Token budget.** `--max-tokens <n>` (or `"maxTokens"` in `.bugzerorc`) limits the AI tokens one `rescue` run may use, fix attempts and the report together; there is no limit unless you set one. Before each request BugZero estimates the prompt (about 4 characters per token) and caps the reply to what is left, up to 8192 tokens. If less than 500 tokens would remain for a reply, the request is not made: the run stops and says so, and the report is written from the raw results without the AI. Because the prompt is only estimated, a run can finish somewhat above the number you give, so treat it as a guard against runaway cost rather than an exact cap. A model that does not report its token usage is counted by the same estimate, and BugZero says when the total includes estimates. `0` means no limit. `hunt` is not covered; use `--no-ai-report` there.
+
 <details>
 <summary><strong>Options for <code>rescue</code></strong></summary>
 
@@ -239,6 +241,7 @@ The whole proposed fix is shown at once, because a fix that spans several files 
 | `--max-attempts <n>` | `-n` | `3` | Maximum AI fix iterations before giving up |
 | `--timeout <seconds>` | `-t` | none | Stop any build, lint, or test command that runs longer than this many seconds |
 | `--patience <n>` | | `2` | Stop early after this many attempts in a row make no progress. `0` turns it off |
+| `--max-tokens <n>` | | none | Limit the AI tokens the run may use, the report included. `0` means no limit |
 | `--no-focus-tests` | | off | Always run the full build, lint and tests, instead of re-running only the failing test files between attempts |
 | `--dry-run` | | `false` | Analyze only — no files will be written |
 | `--approve` | | `false` | Show each proposed fix as a diff and ask before writing it. Needs an interactive terminal |
@@ -291,7 +294,7 @@ bugzero hunt --json | jq '.steps'
 bugzero rescue --json --dry-run | jq -r '.outcome'
 ```
 
-`hunt` reports each step (`build`, `lint`, `test`) as `passed`, `failed`, or `skipped`; failed steps include the command's output and whether it timed out. `rescue` reports an `outcome` of `already-passing`, `fixed`, `failed`, or `dry-run`, along with the model, token usage, and the files and root cause of any fix. Both include the path to the generated report. If a run can't start at all (for example, because of an invalid option), stdout is `{ "success": false, "error": "..." }`.
+`hunt` reports each step (`build`, `lint`, `test`) as `passed`, `failed`, or `skipped`; failed steps include the command's output and whether it timed out. `rescue` reports an `outcome` of `already-passing`, `fixed`, `failed`, or `dry-run`, along with the model, token usage, and the files and root cause of any fix. `tokenBudget` (`limit`, `used`, `estimated`) is set when a budget was given, and `stoppedEarly` is `no-progress` or `token-budget` when a run stopped before using all its attempts; both are `null` otherwise. Both include the path to the generated report. If a run can't start at all (for example, because of an invalid option), stdout is `{ "success": false, "error": "..." }`.
 
 ---
 
@@ -319,7 +322,8 @@ BugZero reads a `.bugzerorc` JSON file in your target project directory to pick 
   "protect": ["config/prod.json", "migrations/**"],
   "allow": [".env.example"],
   "patience": 2,
-  "focusTests": true
+  "focusTests": true,
+  "maxTokens": 100000
 }
 ```
 
@@ -330,6 +334,7 @@ BugZero reads a `.bugzerorc` JSON file in your target project directory to pick 
 | `allow` | Files from the built-in list that BugZero may edit and read after all, such as `.env.example`. A `protect` pattern still wins. |
 | `patience` | How many attempts in a row may make no progress before `rescue` stops early. Default 2, `0` turns it off. `--patience` overrides it. |
 | `focusTests` | Set to `false` to always run the full pipeline, instead of re-running only the failing test files between attempts. Default `true`. `--no-focus-tests` overrides it. |
+| `maxTokens` | The most AI tokens a `rescue` run may use, the report included. Not set or `0` means no limit. `--max-tokens` overrides it. |
 
 Patterns are relative to the project and ignore case. `*` matches within a folder, `**` matches across folders, `?` matches one character, and a trailing `/` means a folder and everything in it. A pattern with no `/` matches that name at any depth, so `.env.*` also covers `apps/web/.env.local`; a pattern with a `/` is anchored to the project root. All keys are optional.
 

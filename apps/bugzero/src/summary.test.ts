@@ -44,6 +44,33 @@ describe("buildRescueSummary", () => {
     ]);
   });
 
+  const tokenBudget = { limit: 10_000, used: 4700, estimated: false };
+
+  it.each([
+    ["a fix", { success: true, attempts: 1, appliedFix, promptTokens: 100, completionTokens: 20 }, false],
+    ["a failure", { success: false, attempts: 1, error: "e", promptTokens: 100, completionTokens: 20 }, false],
+    ["a dry run", { success: false, attempts: 0, error: "e" }, true],
+  ])("shows how much of the token budget %s used", (_name, result, dryRun) => {
+    const summary = buildRescueSummary({ ...result, tokenBudget }, { dryRun });
+
+    expect(summary.lines).toContain("   Token budget: 4700 of 10000 used");
+  });
+
+  it("says when the token count includes estimates", () => {
+    const summary = buildRescueSummary(
+      { success: false, attempts: 1, error: "e", tokenBudget: { ...tokenBudget, estimated: true } },
+      { dryRun: false }
+    );
+
+    expect(summary.lines).toContain("   Token budget: 4700 of 10000 used (includes estimates)");
+  });
+
+  it("says nothing about a token budget when none was given", () => {
+    const summary = buildRescueSummary({ success: false, attempts: 1, error: "e" }, { dryRun: false });
+
+    expect(summary.lines.join(" ")).not.toContain("Token budget");
+  });
+
   it("lists every file for a multi-file fix", () => {
     const summary = buildRescueSummary(
       {

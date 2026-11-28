@@ -11,6 +11,8 @@ export interface BugZeroConfig {
   patience?: number;
   /** Set to false to stop `rescue` re-running only the failing test files between attempts. */
   focusTests?: boolean;
+  /** The most AI tokens a `rescue` run may use, including its report (0 or not set means no limit). */
+  maxTokens?: number;
 }
 
 const CONFIG_FILENAME = ".bugzerorc";

@@ -4,6 +4,7 @@ import {
   DEFAULT_PATIENCE,
   resolveFocusTests,
   resolveMaxAttempts,
+  resolveMaxTokens,
   resolvePatience,
   resolveTimeoutMs,
 } from "./options";
@@ -93,6 +94,47 @@ describe("resolvePatience", () => {
 
   it("does not let a bad .bugzerorc value matter when the flag is valid", () => {
     expect(resolvePatience(3, "nonsense")).toBe(3);
+  });
+});
+
+describe("resolveMaxTokens", () => {
+  it("sets no limit when nothing is set", () => {
+    expect(resolveMaxTokens(undefined, undefined)).toBeUndefined();
+  });
+
+  it("uses the .bugzerorc value when there is no flag", () => {
+    expect(resolveMaxTokens(undefined, 50_000)).toBe(50_000);
+  });
+
+  it("lets the flag beat .bugzerorc", () => {
+    expect(resolveMaxTokens(1000, 50_000)).toBe(1000);
+  });
+
+  it("treats 0 as no limit, so the flag can lift a limit set in .bugzerorc", () => {
+    expect(resolveMaxTokens(0, 50_000)).toBeUndefined();
+    expect(resolveMaxTokens(undefined, 0)).toBeUndefined();
+  });
+
+  it.each([
+    ["a negative number", -1],
+    ["a fraction", 1.5],
+    ["NaN (e.g. from a non-numeric flag)", NaN],
+    ["Infinity", Infinity],
+  ])("rejects %s from the flag, naming the flag", (_label, value) => {
+    expect(() => resolveMaxTokens(value, undefined)).toThrow("--max-tokens must be a whole number of 0 or more");
+  });
+
+  it.each([
+    ["text", "10000"],
+    ["a negative number", -3],
+    ["null", null],
+    ["a list", [5000]],
+  ])("rejects %s from .bugzerorc, naming the file", (_label, value) => {
+    expect(() => resolveMaxTokens(undefined, value)).toThrow("maxTokens in .bugzerorc must be a whole number of 0 or more");
+  });
+
+  it("does not let a bad .bugzerorc value matter when the flag is valid", () => {
+    expect(resolveMaxTokens(1000, "nonsense")).toBe(1000);
   });
 });
 

@@ -26250,7 +26250,12 @@ var require_dist = __commonJS({
     __export2(index_exports, {
       DEFAULT_PROTECTED_PATTERNS: () => DEFAULT_PROTECTED_PATTERNS,
       DEFAULT_SECRET_PATTERNS: () => DEFAULT_SECRET_PATTERNS,
+      MAX_REPLY_TOKENS: () => MAX_REPLY_TOKENS,
+      MIN_REPLY_TOKENS: () => MIN_REPLY_TOKENS,
+      checkBudget: () => checkBudget,
+      countCallTokens: () => countCallTokens,
       createProtectedPathRules: () => createProtectedPathRules,
+      estimateTokens: () => estimateTokens,
       isInsideDirectory: () => isInsideDirectory,
       isLexicallyInside: () => isLexicallyInside,
       projectRelativePaths: () => projectRelativePaths,
@@ -26408,6 +26413,39 @@ var require_dist = __commonJS({
         if (real !== paths[0] && !real.startsWith("..")) paths.push(real);
       }
       return paths;
+    }
+    var CHARS_PER_TOKEN = 4;
+    var MIN_REPLY_TOKENS = 500;
+    var MAX_REPLY_TOKENS = 8192;
+    function estimateTokens(text) {
+      return Math.ceil(text.length / CHARS_PER_TOKEN);
+    }
+    function checkBudget(limit, used, prompt) {
+      if (limit === void 0) return { allowed: true, maxReplyTokens: void 0 };
+      const promptTokens = estimateTokens(prompt);
+      const left = limit - used - promptTokens;
+      if (left < MIN_REPLY_TOKENS) {
+        return {
+          allowed: false,
+          reason: `The token budget of ${limit} does not leave enough for the next AI request (${used} already used, the prompt is about ${promptTokens} tokens, and a reply needs at least ${MIN_REPLY_TOKENS}).`
+        };
+      }
+      return { allowed: true, maxReplyTokens: Math.min(left, MAX_REPLY_TOKENS) };
+    }
+    function reported(value) {
+      return typeof value === "number" && Number.isFinite(value) && value >= 0;
+    }
+    function countCallTokens(limit, prompt, reply) {
+      const promptTokens = reply.usage?.prompt_tokens;
+      const completionTokens = reply.usage?.completion_tokens;
+      if (limit === void 0) {
+        return { promptTokens: promptTokens ?? 0, completionTokens: completionTokens ?? 0, estimated: false };
+      }
+      return {
+        promptTokens: reported(promptTokens) ? promptTokens : estimateTokens(prompt),
+        completionTokens: reported(completionTokens) ? completionTokens : estimateTokens(reply.content),
+        estimated: !reported(promptTokens) || !reported(completionTokens)
+      };
     }
   }
 });
@@ -110918,7 +110956,8 @@ var require_dist9 = __commonJS({
                   role: "user",
                   content: prompt
                 }
-              ]
+              ],
+              ...options?.maxTokens !== void 0 ? { max_tokens: options.maxTokens } : {}
             },
             {
               headers: {
@@ -110930,10 +110969,12 @@ var require_dist9 = __commonJS({
           if (response.data?.error) {
             throw new Error(response.data.error.message || JSON.stringify(response.data.error));
           }
+          const choice = response.data.choices[0];
           return {
-            content: response.data.choices[0].message.content,
+            content: choice.message.content ?? "",
             model,
-            usage: response.data.usage
+            usage: response.data.usage,
+            ...choice.finish_reason === "length" ? { truncated: true } : {}
           };
         } catch (error) {
           let msg = error.message;
@@ -112385,6 +112426,21 @@ var require_dist13 = __commonJS({
         reducer: (_, value) => value,
         default: () => false
       }),
+      /** The most AI tokens the run may use (undefined = no limit) */
+      maxTokens: (0, import_langgraph.Annotation)({
+        reducer: (_, value) => value,
+        default: () => void 0
+      }),
+      /** True once any token count is an estimate because the model did not report it */
+      tokensEstimated: (0, import_langgraph.Annotation)({
+        reducer: (previous, estimated) => previous || estimated,
+        default: () => false
+      }),
+      /** Why the run stopped for lack of token budget, or null when it did not */
+      budgetStop: (0, import_langgraph.Annotation)({
+        reducer: (_, value) => value,
+        default: () => null
+      }),
       /** Per-command timeout in milliseconds for validation steps (undefined = no limit) */
       timeoutMs: (0, import_langgraph.Annotation)({
         reducer: (_, value) => value,
@@ -112440,13 +112496,27 @@ var require_dist13 = __commonJS({
       return (0, import_prompts.buildAnalysisPrompt)(logs, cwd, { rules: protectionFor(cwd) });
     }
     async function analyzeNode(state) {
+      const prompt = previewAnalysisPrompt(state.cwd, state.logs);
+      const used = state.promptTokens + state.completionTokens;
+      const budget = (0, import_shared2.checkBudget)(state.maxTokens, used, prompt);
+      if (!budget.allowed) {
+        console.log(`
+[BugZero] ${budget.reason} Stopping before attempt ${state.attempts + 1}.`);
+        return { budgetStop: budget.reason };
+      }
       console.log(
         `
 [BugZero] Attempt ${state.attempts + 1}/${state.maxAttempts} \u2014 asking AI\u2026`
       );
-      const prompt = previewAnalysisPrompt(state.cwd, state.logs);
-      const result = await provider.invoke(prompt, { cwd: state.cwd });
+      const result = await provider.invoke(prompt, { cwd: state.cwd, maxTokens: budget.maxReplyTokens });
       const response = result.content;
+      const tokens = (0, import_shared2.countCallTokens)(state.maxTokens, prompt, result);
+      if (state.maxTokens !== void 0) {
+        const total = used + tokens.promptTokens + tokens.completionTokens;
+        const note = tokens.estimated ? " (an estimate: the model did not report its token usage)" : "";
+        console.log(`[BugZero] Token budget: ${total} of ${state.maxTokens} used${note}.`);
+        if (result.truncated) console.log("[BugZero] The AI reply was cut off by its length limit, so it may be unusable.");
+      }
       let fixSuggestion = null;
       try {
         const cleaned = response.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
@@ -112469,8 +112539,9 @@ var require_dist13 = __commonJS({
         fixSuggestion,
         attempts: state.attempts + 1,
         modelUsed: result.model,
-        promptTokens: result.usage?.prompt_tokens ?? 0,
-        completionTokens: result.usage?.completion_tokens ?? 0
+        promptTokens: tokens.promptTokens,
+        completionTokens: tokens.completionTokens,
+        tokensEstimated: tokens.estimated
       };
     }
     function patchFailure(state, error) {
@@ -112589,7 +112660,10 @@ Any other files from that same suggestion were rolled back to keep the change at
       }
       return "analyze";
     }
-    var workflow = new import_langgraph2.StateGraph(GraphState).addNode("analyze", analyzeNode).addNode("apply_fix", applyFixNode).addNode("verify", verifyNode).addEdge(import_langgraph2.START, "analyze").addEdge("analyze", "apply_fix").addEdge("apply_fix", "verify").addConditionalEdges("verify", shouldRetry).compile();
+    function afterAnalyze(state) {
+      return state.budgetStop ? import_langgraph2.END : "apply_fix";
+    }
+    var workflow = new import_langgraph2.StateGraph(GraphState).addNode("analyze", analyzeNode).addNode("apply_fix", applyFixNode).addNode("verify", verifyNode).addEdge(import_langgraph2.START, "analyze").addConditionalEdges("analyze", afterAnalyze).addEdge("apply_fix", "verify").addConditionalEdges("verify", shouldRetry).compile();
     function runRepairWorkflow(input) {
       const { initialStep, ...rest } = input;
       return workflow.invoke(
@@ -112647,6 +112721,7 @@ var require_dist14 = __commonJS({
       orchestrateAndFix: () => orchestrateAndFix2,
       resolveFocusTests: () => resolveFocusTests,
       resolveMaxAttempts: () => resolveMaxAttempts,
+      resolveMaxTokens: () => resolveMaxTokens,
       resolvePatience: () => resolvePatience,
       resolveTimeoutMs: () => resolveTimeoutMs
     });
@@ -112819,6 +112894,15 @@ Re-run without \`--dry-run\` to let BugZero attempt a fix.
       }
       return configured;
     }
+    function resolveMaxTokens(flag, configured) {
+      const source = flag !== void 0 ? "--max-tokens" : "maxTokens in .bugzerorc";
+      const value = flag !== void 0 ? flag : configured;
+      if (value === void 0) return void 0;
+      if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+        throw new Error(`${source} must be a whole number of 0 or more, where 0 means no limit (received ${JSON.stringify(value) ?? String(value)}).`);
+      }
+      return value === 0 ? void 0 : value;
+    }
     var DEFAULT_PATIENCE = 2;
     function resolvePatience(flag, configured) {
       const source = flag !== void 0 ? "--patience" : "patience in .bugzerorc";
@@ -112838,8 +112922,12 @@ Re-run without \`--dry-run\` to let BugZero attempt a fix.
     }
     var import_ai_provider = require_dist9();
     var REPORT_FILENAME = "bugzero-report.md";
-    function failureMessage(maxAttempts, declined, appliedAnything, stoppedAfter) {
+    function failureMessage(maxAttempts, declined, appliedAnything, stoppedAfter, budgetStop) {
       const plural = declined === 1 ? "fix" : "fixes";
+      if (budgetStop !== void 0) {
+        const base2 = `Stopped: ${budgetStop} Raise it with --max-tokens.`;
+        return declined > 0 ? `${base2} You declined ${declined} proposed ${plural}.` : base2;
+      }
       if (declined > 0 && !appliedAnything) {
         return `You declined ${declined} proposed ${plural}, so nothing was changed.`;
       }
@@ -112876,6 +112964,7 @@ Re-run without \`--dry-run\` to let BugZero attempt a fix.
       const config = (0, import_config.getLocalConfig)(cwd);
       const patience = resolvePatience(options.patience, config.patience);
       const focusTests = resolveFocusTests(options.focusTests, config.focusTests);
+      const maxTokens = resolveMaxTokens(options.maxTokens, config.maxTokens);
       console.log(`[BugZero] Running validation pipeline in: ${cwd}`);
       const pipelineResult = await (0, import_analyzers.runValidationPipeline)(cwd, { timeoutMs });
       if (pipelineResult.success) {
@@ -112906,19 +112995,21 @@ Re-run without \`--dry-run\` to let BugZero attempt a fix.
       }
       if (options.dryRun) {
         console.log("[BugZero] Dry-run mode \u2014 skipping AI fix.");
-        await writeReport(cwd, "rescue", {
+        const spend2 = await writeReport(cwd, "rescue", {
           success: false,
           attempts: 0,
           maxAttempts,
           error: "Dry-run: analysis complete, no files modified.",
           rawOutput: pipelineResult.output,
-          dryRun: true
+          dryRun: true,
+          maxTokens
         });
         return {
           success: false,
           attempts: 0,
           finalOutput: pipelineResult.output,
-          error: "Dry-run: analysis complete, no files modified."
+          error: "Dry-run: analysis complete, no files modified.",
+          ...tokenBudgetUse(maxTokens, spend2)
         };
       }
       const finalState = await (0, import_agents.runRepairWorkflow)({
@@ -112929,6 +113020,7 @@ Re-run without \`--dry-run\` to let BugZero attempt a fix.
         approve: options.approve,
         patience,
         focusTests,
+        maxTokens,
         initialStep: pipelineResult.step
       });
       const result = {
@@ -112940,15 +113032,16 @@ Re-run without \`--dry-run\` to let BugZero attempt a fix.
           maxAttempts,
           finalState.declinedFixes ?? 0,
           Boolean(finalState.appliedFix),
-          finalState.stoppedForNoProgress ? patience : void 0
+          finalState.stoppedForNoProgress ? patience : void 0,
+          finalState.budgetStop ?? void 0
         ),
-        stoppedEarly: finalState.stoppedForNoProgress ? "no-progress" : void 0,
+        stoppedEarly: finalState.budgetStop ? "token-budget" : finalState.stoppedForNoProgress ? "no-progress" : void 0,
         declinedFixes: finalState.declinedFixes ? finalState.declinedFixes : void 0,
         modelUsed: finalState.modelUsed,
         promptTokens: finalState.promptTokens,
         completionTokens: finalState.completionTokens
       };
-      await writeReport(cwd, "rescue", {
+      const spend = await writeReport(cwd, "rescue", {
         success: result.success,
         attempts: result.attempts,
         maxAttempts,
@@ -112957,9 +113050,16 @@ Re-run without \`--dry-run\` to let BugZero attempt a fix.
         rawOutput: result.finalOutput,
         modelUsed: result.modelUsed,
         promptTokens: result.promptTokens,
-        completionTokens: result.completionTokens
+        completionTokens: result.completionTokens,
+        maxTokens,
+        tokensUsed: (result.promptTokens ?? 0) + (result.completionTokens ?? 0),
+        tokensEstimated: finalState.tokensEstimated
       });
-      return result;
+      return { ...result, ...tokenBudgetUse(maxTokens, spend) };
+    }
+    function tokenBudgetUse(maxTokens, spend) {
+      if (maxTokens === void 0) return {};
+      return { tokenBudget: { limit: maxTokens, used: spend.tokensUsed, estimated: spend.tokensEstimated } };
     }
     function formatPatchesMarkdown(appliedFix) {
       return appliedFix.patches.map(
@@ -112979,6 +113079,30 @@ ${p.replace}
     async function writeReport(cwd, type, data) {
       let content = "";
       const provider = new import_ai_provider.OpenRouterProvider();
+      const spend = { tokensUsed: data.tokensUsed ?? 0, tokensEstimated: data.tokensEstimated ?? false };
+      const askForReport = async (prompt, announcement) => {
+        const budget = (0, import_shared2.checkBudget)(data.maxTokens, spend.tokensUsed, prompt);
+        if (!budget.allowed) {
+          console.log(`[BugZero] ${budget.reason} Writing the report without the AI.`);
+          throw new Error(budget.reason);
+        }
+        console.log(announcement);
+        const result = await provider.invoke(prompt, { cwd, maxTokens: budget.maxReplyTokens });
+        if (data.maxTokens === void 0) return result;
+        const cost = (0, import_shared2.countCallTokens)(data.maxTokens, prompt, result);
+        spend.tokensUsed += cost.promptTokens + cost.completionTokens;
+        spend.tokensEstimated ||= cost.estimated;
+        if (result.content.trim() === "") {
+          throw new Error("The AI returned an empty reply within the token budget.");
+        }
+        if (!result.truncated) return result;
+        return { ...result, content: `${result.content}
+
+> \u26A0\uFE0F This AI-written text was cut off by its length limit (see --max-tokens).` };
+      };
+      const aiNote = (reason) => data.maxTokens === void 0 ? "" : `
+*The AI did not write this report: ${reason}*
+`;
       if (type === "hunt") {
         const { build, lint, test } = data;
         if (!build.success || !lint.success || !test.success) {
@@ -113062,9 +113186,11 @@ ${logs}
 
 Your project already passes its build, lint, and tests, so BugZero made no changes and did not call an AI model.`;
         } else if (data.dryRun) {
-          console.log("[BugZero] Calling AI to diagnose the detected errors and write report...");
           try {
-            const result = await provider.invoke(buildDryRunPrompt(cwd, rawOutput ?? ""), { cwd });
+            const result = await askForReport(
+              buildDryRunPrompt(cwd, rawOutput ?? ""),
+              "[BugZero] Calling AI to diagnose the detected errors and write report..."
+            );
             content = result.content + buildDryRunMetadata(result);
           } catch (e) {
             content = buildDryRunFallbackReport({
@@ -113075,10 +113201,9 @@ Your project already passes its build, lint, and tests, so BugZero made no chang
             });
           }
         } else if (success && appliedFix) {
-          console.log("[BugZero] Calling AI to write solution summary report...");
           const prompt = buildRescueSuccessPrompt({ cwd, attempts, appliedFix });
           try {
-            const result = await provider.invoke(prompt, { cwd });
+            const result = await askForReport(prompt, "[BugZero] Calling AI to write solution summary report...");
             content = result.content;
             content += `
 
@@ -113097,7 +113222,7 @@ Your project already passes its build, lint, and tests, so BugZero made no chang
 
 ## \u{1F4CA} Repair Summary
 - **Status:** \u2705 Fixed successfully!
-- **Attempts:** ${attempts} / ${maxAttempts}
+${aiNote(e.message)}- **Attempts:** ${attempts} / ${maxAttempts}
 - **AI Brain (Model):** \`${modelUsed || "unknown"}\`
 - **Token Usage:** ${promptTokens !== void 0 && completionTokens !== void 0 ? `Prompt: **${promptTokens}** | Completion: **${completionTokens}** | Total: **${promptTokens + completionTokens}**` : "*N/A*"}
 
@@ -113111,10 +113236,9 @@ ${formatPatchesMarkdown(appliedFix)}
 `;
           }
         } else {
-          console.log("[BugZero] Calling AI to analyze unresolved errors and write report...");
           const prompt = buildRescueFailurePrompt({ cwd, attempts, rawOutput });
           try {
-            const result = await provider.invoke(prompt, { cwd });
+            const result = await askForReport(prompt, "[BugZero] Calling AI to analyze unresolved errors and write report...");
             content = result.content;
             content += `
 
@@ -113139,7 +113263,7 @@ ${formatPatchesMarkdown(appliedFix)}
 
 ## \u274C Failed to Repair
 **Reason:** ${error || "Max attempts reached without finding a solution."}
-
+${aiNote(e.message)}
 ### \u{1F7E5} Unresolved Errors & Logs
 \`\`\`text
 ${rawOutput}
@@ -113147,6 +113271,13 @@ ${rawOutput}
 `;
           }
         }
+      }
+      if (data.maxTokens !== void 0) {
+        const estimates = spend.tokensEstimated ? " (includes estimates)" : "";
+        content += `
+
+---
+**Token budget:** ${spend.tokensUsed} of ${data.maxTokens} tokens used${estimates}`;
       }
       content += `
 
@@ -113169,6 +113300,7 @@ ${rawOutput}
         console.log(content);
         console.log("\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500");
       }
+      return spend;
     }
     var import_analyzers2 = require_dist2();
   }

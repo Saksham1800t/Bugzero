@@ -70,6 +70,10 @@ export interface RescueJson extends ProjectInfo {
   attempts: number;
   model: string | null;
   tokens: { prompt: number; completion: number; total: number } | null;
+  /** Set when a token budget was given: what the whole run used of it, the report included */
+  tokenBudget: { limit: number; used: number; estimated: boolean } | null;
+  /** Why the run stopped before using all its attempts, or null when it did not */
+  stoppedEarly: "no-progress" | "token-budget" | null;
   fix: { rootCause: string; explanation: string; files: string[] } | null;
   error: string | null;
   /** Only set by `--print-prompt`: the exact prompt that would be sent to the AI model (nothing was sent). */
@@ -110,6 +114,8 @@ export function buildRescueJson(result: RescueResult, info: ProjectInfo & { dryR
     attempts: result.attempts,
     model: result.modelUsed || null,
     tokens,
+    tokenBudget: result.tokenBudget ?? null,
+    stoppedEarly: result.stoppedEarly ?? null,
     fix: result.appliedFix
       ? {
           rootCause: result.appliedFix.rootCause,

@@ -10,10 +10,19 @@ export interface RescueSummary {
   exitCode: 0 | 1;
 }
 
+function budgetLines(result: RescueResult): string[] {
+  if (!result.tokenBudget) return [];
+  const { used, limit, estimated } = result.tokenBudget;
+  return [`   Token budget: ${used} of ${limit} used${estimated ? " (includes estimates)" : ""}`];
+}
+
 function tokenLines(result: RescueResult): string[] {
-  if (result.promptTokens === undefined || result.completionTokens === undefined) return [];
+  if (result.promptTokens === undefined || result.completionTokens === undefined) return budgetLines(result);
   const total = result.promptTokens + result.completionTokens;
-  return [`   Tokens: Prompt: ${result.promptTokens} | Completion: ${result.completionTokens} | Total: ${total}`];
+  return [
+    `   Tokens: Prompt: ${result.promptTokens} | Completion: ${result.completionTokens} | Total: ${total}`,
+    ...budgetLines(result),
+  ];
 }
 
 /** Builds the closing summary `bugzero rescue` prints, and the exit code to use. */
@@ -50,6 +59,7 @@ export function buildRescueSummary(result: RescueResult, options: { dryRun: bool
       lines: [
         "🔍 Dry run complete — failures were detected, but no fixes were attempted and no files were modified.",
         "   Re-run without --dry-run to let BugZero attempt a fix.",
+        ...budgetLines(result),
         "",
         "👉 Full error logs have been listed in the generated report.",
       ],

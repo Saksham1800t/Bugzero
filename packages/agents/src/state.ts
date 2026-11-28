@@ -118,6 +118,21 @@ export const GraphState = Annotation.Root({
     reducer: (_, value) => value,
     default: () => false,
   }),
+  /** The most AI tokens the run may use (undefined = no limit) */
+  maxTokens: Annotation<number | undefined>({
+    reducer: (_, value) => value,
+    default: () => undefined,
+  }),
+  /** True once any token count is an estimate because the model did not report it */
+  tokensEstimated: Annotation<boolean>({
+    reducer: (previous, estimated) => previous || estimated,
+    default: () => false,
+  }),
+  /** Why the run stopped for lack of token budget, or null when it did not */
+  budgetStop: Annotation<string | null>({
+    reducer: (_, value) => value,
+    default: () => null,
+  }),
   /** Per-command timeout in milliseconds for validation steps (undefined = no limit) */
   timeoutMs: Annotation<number | undefined>({
     reducer: (_, value) => value,

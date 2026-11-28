@@ -9,6 +9,21 @@ Entries for releases before 0.0.45 are not written up yet; see the
 
 ## [Unreleased]
 
+## [0.0.61] - 2026-11-29
+
+### Added
+
+- **Token budget for `rescue`.** `--max-tokens <n>`, or `maxTokens` in `.bugzerorc`, limits the AI tokens
+  a run may use, fix attempts and report together. Before each request the prompt is estimated and the reply
+  capped to what is left; when there is no room, the run stops and says why, and the report is written
+  without the AI. The prompt estimate is rough, so a run can end somewhat above the budget. Usage a model
+  does not report is estimated and marked as such. There is no limit unless you set one.
+- `rescue --json` now includes `tokenBudget` and `stoppedEarly`.
+
+### Fixed
+
+- A reply with no text from the model is treated as an empty reply instead of crashing the run.
+
 ## [0.0.60] - 2026-11-24
 
 ### Added

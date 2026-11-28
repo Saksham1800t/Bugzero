@@ -1,13 +1,20 @@
 import { runBuild, runLint, runTests, parseErrors, runValidationPipeline } from "@opspilot/analyzers";
 import { previewAnalysisPrompt, runRepairWorkflow } from "@opspilot/agents";
-import { uniqueFilePaths, type ApprovalHandler, type FixResult } from "@opspilot/shared";
+import {
+  checkBudget,
+  countCallTokens,
+  uniqueFilePaths,
+  type ApprovalHandler,
+  type FixResult,
+  type TokenBudgetUse,
+} from "@opspilot/shared";
 import fs from "fs";
 import path from "path";
 import { pathToFileURL } from "url";
 import { detectFramework } from "./framework-detector";
 import { buildDryRunFallbackReport, buildDryRunMetadata, buildDryRunPrompt } from "./dry-run-report";
 import { getLocalConfig } from "@opspilot/config";
-import { resolveFocusTests, resolveMaxAttempts, resolvePatience, resolveTimeoutMs } from "./options";
+import { resolveFocusTests, resolveMaxAttempts, resolveMaxTokens, resolvePatience, resolveTimeoutMs } from "./options";
 import { assertNodeProject } from "./project-check";
 import { OpenRouterProvider } from "@opspilot/ai-provider";
 import { buildHuntDiagnosisPrompt, buildRescueFailurePrompt, buildRescueSuccessPrompt } from "./report-prompts";
@@ -16,8 +23,18 @@ import { buildHuntDiagnosisPrompt, buildRescueFailurePrompt, buildRescueSuccessP
 export const REPORT_FILENAME = "bugzero-report.md";
 
 /** Why a repair ended without success. Fixes the person declined are called out, not blamed on the attempt limit. */
-function failureMessage(maxAttempts: number, declined: number, appliedAnything: boolean, stoppedAfter?: number): string {
+function failureMessage(
+  maxAttempts: number,
+  declined: number,
+  appliedAnything: boolean,
+  stoppedAfter?: number,
+  budgetStop?: string
+): string {
   const plural = declined === 1 ? "fix" : "fixes";
+  if (budgetStop !== undefined) {
+    const base = `Stopped: ${budgetStop} Raise it with --max-tokens.`;
+    return declined > 0 ? `${base} You declined ${declined} proposed ${plural}.` : base;
+  }
   if (declined > 0 && !appliedAnything) {
     return `You declined ${declined} proposed ${plural}, so nothing was changed.`;
   }
@@ -48,6 +65,11 @@ export interface OrchestrateOptions {
    * the full pipeline once they pass (default: from .bugzerorc, else true).
    */
   focusTests?: boolean;
+  /**
+   * `rescue` only: the most AI tokens the run may use, fix attempts and report together (default: from
+   * .bugzerorc, else no limit). 0 means no limit.
+   */
+  maxTokens?: number;
   /** When true, only analyse — never write files */
   dryRun?: boolean;
   /** Stop any build/lint/test command that runs longer than this many seconds (default: no limit) */
@@ -100,6 +122,7 @@ export async function orchestrateAndFix(
   const config = getLocalConfig(cwd);
   const patience = resolvePatience(options.patience, config.patience);
   const focusTests = resolveFocusTests(options.focusTests, config.focusTests);
+  const maxTokens = resolveMaxTokens(options.maxTokens, config.maxTokens);
 
   // ── Step 1: Initial validation run ──────────────────────────────────────
   console.log(`[BugZero] Running validation pipeline in: ${cwd}`);
@@ -137,19 +160,21 @@ export async function orchestrateAndFix(
 
   if (options.dryRun) {
     console.log("[BugZero] Dry-run mode — skipping AI fix.");
-    await writeReport(cwd, "rescue", {
+    const spend = await writeReport(cwd, "rescue", {
       success: false,
       attempts: 0,
       maxAttempts,
       error: "Dry-run: analysis complete, no files modified.",
       rawOutput: pipelineResult.output,
       dryRun: true,
+      maxTokens,
     });
     return {
       success: false,
       attempts: 0,
       finalOutput: pipelineResult.output,
       error: "Dry-run: analysis complete, no files modified.",
+      ...tokenBudgetUse(maxTokens, spend),
     };
   }
 
@@ -162,6 +187,7 @@ export async function orchestrateAndFix(
     approve: options.approve,
     patience,
     focusTests,
+    maxTokens,
     initialStep: pipelineResult.step,
   });
 
@@ -174,16 +200,21 @@ export async function orchestrateAndFix(
           maxAttempts,
           finalState.declinedFixes ?? 0,
           Boolean(finalState.appliedFix),
-          finalState.stoppedForNoProgress ? patience : undefined
+          finalState.stoppedForNoProgress ? patience : undefined,
+          finalState.budgetStop ?? undefined
         ),
-    stoppedEarly: finalState.stoppedForNoProgress ? ("no-progress" as const) : undefined,
+    stoppedEarly: finalState.budgetStop
+      ? ("token-budget" as const)
+      : finalState.stoppedForNoProgress
+        ? ("no-progress" as const)
+        : undefined,
     declinedFixes: finalState.declinedFixes ? finalState.declinedFixes : undefined,
     modelUsed: finalState.modelUsed,
     promptTokens: finalState.promptTokens,
     completionTokens: finalState.completionTokens,
   };
 
-  await writeReport(cwd, "rescue", {
+  const spend = await writeReport(cwd, "rescue", {
     success: result.success,
     attempts: result.attempts,
     maxAttempts,
@@ -193,9 +224,23 @@ export async function orchestrateAndFix(
     modelUsed: result.modelUsed,
     promptTokens: result.promptTokens,
     completionTokens: result.completionTokens,
+    maxTokens,
+    tokensUsed: (result.promptTokens ?? 0) + (result.completionTokens ?? 0),
+    tokensEstimated: finalState.tokensEstimated,
   });
 
-  return result;
+  return { ...result, ...tokenBudgetUse(maxTokens, spend) };
+}
+
+/** What the whole run spent of its token budget; the report request is included. */
+interface ReportSpend {
+  tokensUsed: number;
+  tokensEstimated: boolean;
+}
+
+function tokenBudgetUse(maxTokens: number | undefined, spend: ReportSpend): { tokenBudget?: TokenBudgetUse } {
+  if (maxTokens === undefined) return {};
+  return { tokenBudget: { limit: maxTokens, used: spend.tokensUsed, estimated: spend.tokensEstimated } };
 }
 
 function formatPatchesMarkdown(appliedFix: { patches: { filePath: string; search: string; replace: string }[] }): string {
@@ -229,11 +274,43 @@ async function writeReport(
     modelUsed?: string;
     promptTokens?: number;
     completionTokens?: number;
+    /** `rescue` only: the run's token budget, and what the fix attempts already spent of it */
+    maxTokens?: number;
+    tokensUsed?: number;
+    tokensEstimated?: boolean;
   }
-) {
+): Promise<ReportSpend> {
   let content = "";
 
   const provider = new OpenRouterProvider();
+  const spend: ReportSpend = { tokensUsed: data.tokensUsed ?? 0, tokensEstimated: data.tokensEstimated ?? false };
+
+  /**
+   * The AI request for a `rescue` report, kept within the token budget. When the budget has no room for it, or the
+   * capped reply comes back empty, it throws like any failed request, so the report is written without the AI.
+   */
+  const askForReport = async (prompt: string, announcement: string) => {
+    const budget = checkBudget(data.maxTokens, spend.tokensUsed, prompt);
+    if (!budget.allowed) {
+      console.log(`[BugZero] ${budget.reason} Writing the report without the AI.`);
+      throw new Error(budget.reason);
+    }
+    console.log(announcement);
+    const result = await provider.invoke(prompt, { cwd, maxTokens: budget.maxReplyTokens });
+    if (data.maxTokens === undefined) return result;
+
+    const cost = countCallTokens(data.maxTokens, prompt, result);
+    spend.tokensUsed += cost.promptTokens + cost.completionTokens;
+    spend.tokensEstimated ||= cost.estimated;
+    if (result.content.trim() === "") {
+      throw new Error("The AI returned an empty reply within the token budget.");
+    }
+    if (!result.truncated) return result;
+    return { ...result, content: `${result.content}\n\n> ⚠️ This AI-written text was cut off by its length limit (see --max-tokens).` };
+  };
+
+  /** Says in a report written without the AI why that was, when a token budget is the context for it. */
+  const aiNote = (reason: string) => (data.maxTokens === undefined ? "" : `\n*The AI did not write this report: ${reason}*\n`);
 
   if (type === "hunt") {
     const { build, lint, test } = data;
@@ -311,9 +388,11 @@ ${logs}
 
 Your project already passes its build, lint, and tests, so BugZero made no changes and did not call an AI model.`;
     } else if (data.dryRun) {
-      console.log("[BugZero] Calling AI to diagnose the detected errors and write report...");
       try {
-        const result = await provider.invoke(buildDryRunPrompt(cwd, rawOutput ?? ""), { cwd });
+        const result = await askForReport(
+          buildDryRunPrompt(cwd, rawOutput ?? ""),
+          "[BugZero] Calling AI to diagnose the detected errors and write report..."
+        );
         content = result.content + buildDryRunMetadata(result);
       } catch (e: any) {
         content = buildDryRunFallbackReport({
@@ -324,11 +403,10 @@ Your project already passes its build, lint, and tests, so BugZero made no chang
         });
       }
     } else if (success && appliedFix) {
-      console.log("[BugZero] Calling AI to write solution summary report...");
       const prompt = buildRescueSuccessPrompt({ cwd, attempts, appliedFix });
 
       try {
-        const result = await provider.invoke(prompt, { cwd });
+        const result = await askForReport(prompt, "[BugZero] Calling AI to write solution summary report...");
         content = result.content;
         content += `\n\n---\n### 🤖 BugZero Rescue Metadata\n- **AI Brain (Model) used for Fix:** \`${modelUsed || "unknown"}\`\n- **Token Usage for Fix:** ${promptTokens !== undefined && completionTokens !== undefined ? `Prompt: **${promptTokens}** | Completion: **${completionTokens}** | Total: **${promptTokens + completionTokens}**` : "*N/A*"}\n- **AI Brain (Model) used for Report:** \`${result.model || "unknown"}\`\n- **Token Usage for Report:** ${result.usage ? `Prompt: **${result.usage.prompt_tokens}** | Completion: **${result.usage.completion_tokens}** | Total: **${result.usage.total_tokens}**` : "*N/A*"}`;
       } catch (e: any) {
@@ -340,7 +418,7 @@ Your project already passes its build, lint, and tests, so BugZero made no chang
 
 ## 📊 Repair Summary
 - **Status:** ✅ Fixed successfully!
-- **Attempts:** ${attempts} / ${maxAttempts}
+${aiNote(e.message)}- **Attempts:** ${attempts} / ${maxAttempts}
 - **AI Brain (Model):** \`${modelUsed || "unknown"}\`
 - **Token Usage:** ${promptTokens !== undefined && completionTokens !== undefined ? `Prompt: **${promptTokens}** | Completion: **${completionTokens}** | Total: **${promptTokens + completionTokens}**` : "*N/A*"}
 
@@ -354,11 +432,10 @@ ${formatPatchesMarkdown(appliedFix)}
 `;
       }
     } else {
-      console.log("[BugZero] Calling AI to analyze unresolved errors and write report...");
       const prompt = buildRescueFailurePrompt({ cwd, attempts, rawOutput });
 
       try {
-        const result = await provider.invoke(prompt, { cwd });
+        const result = await askForReport(prompt, "[BugZero] Calling AI to analyze unresolved errors and write report...");
         content = result.content;
         content += `\n\n---\n### 🤖 BugZero Rescue Metadata\n- **AI Brain (Model) used for Fix Attempts:** \`${modelUsed || "unknown"}\`\n- **Token Usage for Fix Attempts:** ${promptTokens !== undefined && completionTokens !== undefined ? `Prompt: **${promptTokens}** | Completion: **${completionTokens}** | Total: **${promptTokens + completionTokens}**` : "*N/A*"}\n- **AI Brain (Model) used for Report:** \`${result.model || "unknown"}\`\n- **Token Usage for Report:** ${result.usage ? `Prompt: **${result.usage.prompt_tokens}** | Completion: **${result.usage.completion_tokens}** | Total: **${result.usage.total_tokens}**` : "*N/A*"}`;
       } catch (e: any) {
@@ -376,7 +453,7 @@ ${formatPatchesMarkdown(appliedFix)}
 
 ## ❌ Failed to Repair
 **Reason:** ${error || "Max attempts reached without finding a solution."}
-
+${aiNote(e.message)}
 ### 🟥 Unresolved Errors & Logs
 \`\`\`text
 ${rawOutput}
@@ -384,6 +461,11 @@ ${rawOutput}
 `;
       }
     }
+  }
+
+  if (data.maxTokens !== undefined) {
+    const estimates = spend.tokensEstimated ? " (includes estimates)" : "";
+    content += `\n\n---\n**Token budget:** ${spend.tokensUsed} of ${data.maxTokens} tokens used${estimates}`;
   }
 
   // Add metadata footer to report
@@ -402,4 +484,5 @@ ${rawOutput}
     console.log(content);
     console.log("\n──────────────────────────────────────────────");
   }
+  return spend;
 }

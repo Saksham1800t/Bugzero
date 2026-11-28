@@ -74,6 +74,44 @@ describe("OpenRouterProvider", () => {
     );
   });
 
+  it("limits the reply length when asked to, and says when the reply was cut off by it", async () => {
+    process.env.OPENROUTER_API_KEY = "test-key";
+    mockPost.mockResolvedValueOnce({
+      data: { choices: [{ message: { content: '{"rootC' }, finish_reason: "length" }] },
+    } as any);
+
+    const result = await new OpenRouterProvider().invoke("fix this", { cwd: tmpDir, maxTokens: 700 });
+
+    expect(mockPost.mock.calls[0][1]).toEqual({
+      model: "deepseek/deepseek-chat",
+      messages: [{ role: "user", content: "fix this" }],
+      max_tokens: 700,
+    });
+    expect(result.truncated).toBe(true);
+  });
+
+  it("does not call a normally finished reply cut off", async () => {
+    process.env.OPENROUTER_API_KEY = "test-key";
+    mockPost.mockResolvedValueOnce({
+      data: { choices: [{ message: { content: "done" }, finish_reason: "stop" }] },
+    } as any);
+
+    const result = await new OpenRouterProvider().invoke("fix this", { cwd: tmpDir, maxTokens: 700 });
+
+    expect(result.truncated).toBeUndefined();
+  });
+
+  it("returns empty text, not null, when a reply has no content (a model can spend the whole limit thinking)", async () => {
+    process.env.OPENROUTER_API_KEY = "test-key";
+    mockPost.mockResolvedValueOnce({
+      data: { choices: [{ message: { content: null }, finish_reason: "length" }] },
+    } as any);
+
+    const result = await new OpenRouterProvider().invoke("fix this", { cwd: tmpDir, maxTokens: 700 });
+
+    expect(result.content).toBe("");
+  });
+
   it("uses the model configured in .bugzerorc for the target cwd", async () => {
     process.env.OPENROUTER_API_KEY = "test-key";
     fs.writeFileSync(path.join(tmpDir, ".bugzerorc"), JSON.stringify({ model: "openai/gpt-4o" }), "utf-8");

@@ -2,7 +2,7 @@ import axios from "axios";
 import fs from "fs";
 import path from "path";
 import { getErrorHints } from "./error-hints";
-import { AIProvider, InvokeResult } from "./provider";
+import { AIProvider, InvokeOptions, InvokeResult } from "./provider";
 
 /** Read the selected model from .bugzerorc in the target project directory */
 function resolveModel(cwd?: string): string {
@@ -19,7 +19,7 @@ function resolveModel(cwd?: string): string {
 }
 
 export class OpenRouterProvider implements AIProvider {
-  async invoke(prompt: string, options?: { cwd?: string }): Promise<InvokeResult> {
+  async invoke(prompt: string, options?: InvokeOptions): Promise<InvokeResult> {
     const model = resolveModel(options?.cwd);
 
     const apiKey = process.env.OPENROUTER_API_KEY;
@@ -44,6 +44,7 @@ export class OpenRouterProvider implements AIProvider {
               content: prompt,
             },
           ],
+          ...(options?.maxTokens !== undefined ? { max_tokens: options.maxTokens } : {}),
         },
         {
           headers: {
@@ -57,10 +58,12 @@ export class OpenRouterProvider implements AIProvider {
         throw new Error(response.data.error.message || JSON.stringify(response.data.error));
       }
 
+      const choice = response.data.choices[0];
       return {
-        content: response.data.choices[0].message.content,
+        content: choice.message.content ?? "",
         model: model,
         usage: response.data.usage,
+        ...(choice.finish_reason === "length" ? { truncated: true } : {}),
       };
     } catch (error: any) {
       let msg = error.message;

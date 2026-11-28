@@ -158,6 +158,29 @@ describe("buildRescueJson", () => {
     });
   });
 
+  it("reports the token budget and why a run stopped early", () => {
+    const json = buildRescueJson(
+      {
+        success: false,
+        attempts: 1,
+        error: "e",
+        stoppedEarly: "token-budget",
+        tokenBudget: { limit: 10_000, used: 9800, estimated: true },
+      },
+      rescueInfo
+    );
+
+    expect(json.tokenBudget).toEqual({ limit: 10_000, used: 9800, estimated: true });
+    expect(json.stoppedEarly).toBe("token-budget");
+  });
+
+  it("has null for both when there is no budget and the run did not stop early", () => {
+    const json = buildRescueJson({ success: false, attempts: 3, error: "e" }, rescueInfo);
+
+    expect(json.tokenBudget).toBeNull();
+    expect(json.stoppedEarly).toBeNull();
+  });
+
   it("has no prompt on a normal run", () => {
     expect(buildRescueJson({ success: true, attempts: 0, finalOutput: "" }, rescueInfo).prompt).toBeNull();
     expect(buildRescueJson({ success: false, attempts: 3, finalOutput: "x", error: "e" }, rescueInfo).prompt).toBeNull();

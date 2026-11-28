@@ -3,6 +3,7 @@ export * from "./orchestrator";
 export {
   resolveFocusTests,
   resolveMaxAttempts,
+  resolveMaxTokens,
   resolvePatience,
   resolveTimeoutMs,
   DEFAULT_MAX_ATTEMPTS,
